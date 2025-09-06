@@ -139,14 +139,14 @@ class ConversationMemory:
         # Create embedding for the current message
         query_embedding = self.embedding_model.encode([current_message])[0].tolist()
         
-        # Build filter conditions
-        where_conditions = {"user_id": user_id}
+        # Build filter conditions - ChromaDB expects specific operator format
+        where_conditions = {"user_id": {"$eq": user_id}}
         
         if agent_type:
-            where_conditions["agent_type"] = agent_type
+            where_conditions["agent_type"] = {"$eq": agent_type}
             
         if programming_language:
-            where_conditions["programming_language"] = programming_language
+            where_conditions["programming_language"] = {"$eq": programming_language}
         
         try:
             # Query ChromaDB for similar interactions

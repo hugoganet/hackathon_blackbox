@@ -1,0 +1,32 @@
+:
+USER: id_user, username, email, password_hash, role, created_at, updated_at, is_active
+OWN, 0N USER, 1N SESSION
+SESSION: id_session, title, agent_type, created_at, ended_at, is_active
+
+CONTAIN, 0N SESSION, 1N INTERACTION  
+INTERACTION: id_interaction, user_message, mentor_response, vector_id, response_time_ms, created_at
+
+CLASSIFY, 0N INTERACTION, 11 REF_DOMAIN
+REF_DOMAIN: id_domain, name, description
+
+USE, 0N INTERACTION, 01 REF_LANGUAGE
+REF_LANGUAGE: id_language, name, category, is_active
+
+CATEGORIZE, 0N INTERACTION, 01 REF_INTENT
+REF_INTENT: id_intent, name, description
+
+MASTER, 0N USER, 0N SKILL, initial_level: creation_date
+SKILL: id_skill, name, description
+
+BELONG_TO, 0N SKILL, 11 REF_DOMAIN
+
+TRACK, 0N USER, 0N SKILL, mastery_level, snapshot_date: 
+SKILL_HISTORY: id_history
+
+GENERATE, 0N INTERACTION, 0N FLASHCARD
+FLASHCARD: id_flashcard, question, answer, difficulty, card_type, created_at, next_review_date, review_count
+
+REVIEW, 0N USER, 0N FLASHCARD, success_score, response_time: 
+REVIEW_SESSION: id_review, review_date
+
+:

@@ -16,18 +16,32 @@ from typing import Generator
 # Railway automatically provides DATABASE_URL environment variable
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dev_mentor.db")  # Fallback to SQLite for local dev
 
+# Check if we're using PostgreSQL or SQLite
+is_postgres = DATABASE_URL.startswith("postgresql")
+
 # SQLAlchemy setup
-engine = create_engine(
-    DATABASE_URL,
-    # PostgreSQL specific settings (ignored by SQLite)
-    pool_pre_ping=True,  # Verify connections before use
-    pool_recycle=300,    # Recycle connections every 5 minutes  
-)
+if is_postgres:
+    # PostgreSQL configuration
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,  # Verify connections before use
+        pool_recycle=300,    # Recycle connections every 5 minutes
+    )
+else:
+    # SQLite configuration (for local development)
+    engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 # Database Models
+
+# Define UUID column type based on database
+if is_postgres:
+    UUIDType = UUID(as_uuid=True)
+else:
+    # For SQLite, use String to store UUID as text
+    UUIDType = String(36)
 
 class User(Base):
     """
@@ -35,7 +49,7 @@ class User(Base):
     """
     __tablename__ = "users"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
     username = Column(String(50), unique=True, nullable=False)
     email = Column(String(255), unique=True, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -50,8 +64,8 @@ class Conversation(Base):
     """
     __tablename__ = "conversations"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUIDType, ForeignKey("users.id"), nullable=False)
     session_id = Column(String(255), nullable=False, index=True)
     agent_type = Column(String(20), nullable=False)  # "normal" or "strict"
     title = Column(String(255), nullable=True)  # Optional conversation title
@@ -70,8 +84,8 @@ class Interaction(Base):
     """
     __tablename__ = "interactions"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversations.id"), nullable=False)
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+    conversation_id = Column(UUIDType, ForeignKey("conversations.id"), nullable=False)
     
     # Message content
     user_message = Column(Text, nullable=False)
@@ -153,7 +167,18 @@ def create_conversation(db: Session, user_id: str, session_id: str, agent_type: 
     """
     Create new conversation record
     """
+    # Handle UUID properly for both PostgreSQL and SQLite
+    if is_postgres:
+        # PostgreSQL: convert string to UUID object
+        if isinstance(user_id, str):
+            user_id = uuid.UUID(user_id)
+        conversation_id = uuid.uuid4()
+    else:
+        # SQLite: keep as string
+        conversation_id = str(uuid.uuid4())
+    
     conversation = Conversation(
+        id=conversation_id,
         user_id=user_id,
         session_id=session_id,
         agent_type=agent_type
@@ -173,7 +198,18 @@ def save_interaction(
     """
     Save interaction to database for memory and analytics
     """
+    # Handle UUID properly for both PostgreSQL and SQLite
+    if is_postgres:
+        # PostgreSQL: convert string to UUID object
+        if isinstance(conversation_id, str):
+            conversation_id = uuid.UUID(conversation_id)
+        interaction_id = uuid.uuid4()
+    else:
+        # SQLite: keep as string
+        interaction_id = str(uuid.uuid4())
+    
     interaction = Interaction(
+        id=interaction_id,
         conversation_id=conversation_id,
         user_message=user_message,
         mentor_response=mentor_response,

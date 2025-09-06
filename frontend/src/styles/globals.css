@@ -63,7 +63,7 @@
 
   /* Text selection */
   ::selection {
-    @apply bg-primary-100 text-primary-900;
+    @apply bg-blue-100 text-blue-900;
   }
   
   /* Code blocks styling */

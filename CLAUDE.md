@@ -33,22 +33,29 @@ Create a comprehensive learning platform where junior developers can:
 - **langgraph**: Advanced AI agent orchestration (planned)
 - **pgvector**: Migration path from ChromaDB for larger scale
 
-## AI Mentor Agents
+## AI Agent System
 
-### 1. Normal Mentor Agent (`agent-mentor.md`)
-- **Complete solutions**: Provides detailed answers and code examples
-- **Comprehensive guidance**: Explains concepts thoroughly with examples
-- **Expert knowledge**: Covers development, AI, architecture, and best practices
-- **Direct teaching**: Traditional mentoring approach with full explanations
-- **Use case**: When users need comprehensive understanding quickly
-
-### 2. Strict Mentor Agent (`agent-mentor-strict.md`)
+### 1. Strict Mentor Agent (`agent-mentor-strict.md`)
 - **NO DIRECT ANSWERS**: Absolute policy - never provides complete solutions
 - **Socratic method**: Guides through questions and progressive hints only
 - **Junior-focused**: Specifically designed for beginning developers
 - **Autonomy building**: Forces users to discover solutions independently
 - **Resilient**: Refuses to give answers even when users beg or insist
 - **Pedagogical**: Celebrates small victories and builds confidence through discovery
+
+### 2. Curator Agent (`curator-agent.md`)
+- **Conversation analysis**: Processes interactions between users and mentors
+- **Learning extraction**: Identifies skills, mistakes, knowledge gaps, and confidence levels
+- **Structured output**: Generates JSON data for spaced repetition algorithms
+- **Pattern recognition**: Tracks learning progression and common error patterns
+- **Data formatting**: Prepares conversations for database storage and analysis
+
+### 3. Flashcard Agent (`flashcard-agent.md`)
+- **Spaced repetition**: Creates optimized flashcards for long-term retention
+- **Multiple formats**: Concept definitions, code completion, error identification, applications
+- **Personalization**: Adapts difficulty and content to user's skill level and gaps
+- **Learning optimization**: Uses curator analysis to prioritize important concepts
+- **Memory reinforcement**: Designs cards for multiple review cycles and progressive difficulty
 
 ## Core Features
 
@@ -71,8 +78,9 @@ dev_mentor_ai/
 ├── main.py                    # Original CLI program  
 ├── database.py                # PostgreSQL models & utilities
 ├── memory_store.py            # ChromaDB vector memory system
-├── agent-mentor.md            # Normal mentor agent prompt
-├── agent-mentor-strict.md     # Strict mentor agent prompt (no direct answers)
+├── agent-mentor-strict.md     # Strict mentor agent (Socratic method)
+├── curator-agent.md           # Conversation analysis and learning extraction
+├── flashcard-agent.md         # Spaced repetition flashcard generation
 ├── requirements.txt           # Python dependencies
 ├── .env.example              # Environment variables template
 ├── Procfile                  # Railway deployment configuration
@@ -162,7 +170,7 @@ curl http://localhost:8000/agents
 ```json
 {
     "message": "How do I fix this React error?",
-    "agent_type": "strict",  // "normal" or "strict"
+    "agent_type": "strict",  // Available: "strict", "curator", "flashcard"
     "user_id": "developer123",
     "session_id": "optional_session_id"
 }
@@ -184,7 +192,7 @@ curl http://localhost:8000/agents
 - **FastAPI REST API** with comprehensive endpoints
 - **PostgreSQL integration** for user data and conversations
 - **ChromaDB vector store** for conversation memory
-- **Dual mentor agents** (normal + strict) with Blackbox AI
+- **Three-agent system** (strict mentor, curator, flashcard) with Blackbox AI
 - **Railway deployment** configuration
 - **Comprehensive testing** suite with >80% coverage
 - **Production monitoring** with health checks and stats
@@ -255,7 +263,7 @@ Each directory contains comprehensive technical documentation:
 - **PostgreSQL over SQLite**: Production scalability, concurrent users, advanced features
 - **ChromaDB over in-memory**: Persistent conversation memory, semantic search capabilities
 - **Railway over Heroku**: Better Python support, integrated PostgreSQL, competitive pricing
-- **Dual agent system**: Flexibility for different learning styles and experience levels
+- **Multi-agent system**: Specialized agents for mentoring, analysis, and spaced repetition
 
 ### Performance Characteristics
 - **API Response Time**: < 200ms for cached responses, < 2s for new conversations
@@ -269,7 +277,7 @@ Each directory contains comprehensive technical documentation:
 - Production-ready FastAPI backend with comprehensive API
 - PostgreSQL database with proper relationships and migrations
 - ChromaDB vector store with semantic conversation search
-- Dual mentor agent system (normal + strict pedagogies)  
+- Multi-agent system (strict mentor + curator + flashcard agents)  
 - Railway deployment configuration with one-command setup
 - Comprehensive test coverage (>80%) with automated testing
 - Memory system with learning pattern analysis

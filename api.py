@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
+from contextlib import asynccontextmanager
 import os
 from dotenv import load_dotenv
 import time
@@ -21,11 +22,49 @@ from memory_store import get_memory_store, ConversationMemory
 # Load environment variables
 load_dotenv()
 
-# Create FastAPI app instance
+# Global instances for mentor agents and memory store
+normal_mentor: Optional[BlackboxMentor] = None
+strict_mentor: Optional[BlackboxMentor] = None
+memory_store: Optional[ConversationMemory] = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifecycle - startup and shutdown"""
+    # Startup
+    global normal_mentor, strict_mentor, memory_store
+    
+    # Load environment variables
+    load_env_file()
+    
+    try:
+        # Initialize database tables
+        create_tables()
+        print("✅ Database tables initialized")
+        
+        # Initialize both mentor agents
+        normal_mentor = BlackboxMentor("agent-mentor.md")
+        strict_mentor = BlackboxMentor("agent-mentor-strict.md")
+        print("✅ Mentor agents initialized successfully")
+        
+        # Initialize vector store (Chroma)
+        memory_store = get_memory_store()
+        print("✅ Memory store initialized")
+        
+    except Exception as e:
+        print(f"❌ Startup error: {e}")
+        raise e
+    
+    yield
+    
+    # Shutdown - cleanup if needed
+    print("👋 Shutting down application...")
+
+# Create FastAPI app instance with lifespan
 app = FastAPI(
     title="Dev Mentor AI API",
     description="AI mentoring system for junior developers with memory capabilities",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # CORS configuration for React frontend (Vercel)
@@ -60,37 +99,6 @@ class HealthResponse(BaseModel):
     """Health check response"""
     status: str
     message: str
-
-# Global mentor instances (initialized once for performance)
-normal_mentor: Optional[BlackboxMentor] = None
-strict_mentor: Optional[BlackboxMentor] = None
-memory_store: Optional[ConversationMemory] = None
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the application on startup"""
-    global normal_mentor, strict_mentor, memory_store
-    
-    # Load environment variables
-    load_env_file()
-    
-    try:
-        # Initialize database tables
-        create_tables()
-        print("✅ Database tables initialized")
-        
-        # Initialize both mentor agents
-        normal_mentor = BlackboxMentor("agent-mentor.md")
-        strict_mentor = BlackboxMentor("agent-mentor-strict.md")
-        print("✅ Mentor agents initialized successfully")
-        
-        # Initialize vector store (Chroma)
-        memory_store = get_memory_store()
-        print("✅ Memory store initialized")
-        
-    except Exception as e:
-        print(f"❌ Startup error: {e}")
-        raise e
 
 @app.get("/", response_model=HealthResponse)
 async def root():
