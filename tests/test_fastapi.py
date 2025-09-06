@@ -78,12 +78,13 @@ class TestHealthEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert "agents" in data
-        assert len(data["agents"]) == 2
+        assert len(data["agents"]) == 3
         
         # Check agent structures
         agent_ids = [agent["id"] for agent in data["agents"]]
         assert "normal" in agent_ids
         assert "strict" in agent_ids
+        assert "curator" in agent_ids
 
 class TestChatEndpoint:
     """Test main chat functionality"""
