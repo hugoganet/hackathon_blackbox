@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Mini program that uses the Blackbox API to answer user questions
-with a custom system prompt from agent-mentor.md
+with a custom system prompt from agents/agent-mentor.md
 """
 
 import os
@@ -22,7 +22,7 @@ def load_env_file():
                     os.environ[key.strip()] = value.strip()
 
 class BlackboxMentor:
-    def __init__(self, agent_file: str = "agent-mentor.md"):
+    def __init__(self, agent_file: str = "../agents/agent-mentor.md"):
         self.api_url = "https://api.blackbox.ai/chat/completions"
         self.agent_file = agent_file
         self.system_prompt = self._load_system_prompt()
@@ -104,9 +104,9 @@ def choose_agent() -> str:
         try:
             choice = input("\nYour choice (1 or 2): ").strip()
             if choice == "1":
-                return "agent-mentor.md"
+                return "../agents/agent-mentor.md"
             elif choice == "2":
-                return "agent-mentor-strict.md"
+                return "../agents/agent-mentor-strict.md"
             else:
                 print("⚠️  Please enter 1 or 2")
         except KeyboardInterrupt:

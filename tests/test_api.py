@@ -4,18 +4,18 @@ Test script to verify that the Blackbox API works correctly
 """
 
 import sys
-from main import BlackboxMentor, load_env_file
+from backend.main import BlackboxMentor, load_env_file
 
-def test_api():
-    """Simple test of the Blackbox API"""
+def _run_api_test():
+    """Internal function to run the API test"""
     print("🔍 Testing Blackbox API...")
     
     # Load environment variables
     load_env_file()
     
     try:
-        # Initialize the mentor
-        mentor = BlackboxMentor()
+        # Initialize the mentor with existing agent file
+        mentor = BlackboxMentor("agents/agent-mentor-strict.md")
         print("✅ Mentor Agent initialized successfully")
         
         # Test 1: Simple question
@@ -47,12 +47,18 @@ def test_api():
         print(f"✅ Response received ({len(response2)} characters)")
         print(f"📝 Response: {response2[:300]}{'...' if len(response2) > 300 else ''}")
         
+        # Test passed successfully - but still return True for main() compatibility
         return True
         
     except Exception as e:
         print(f"❌ Error during test: {e}")
         return False
 
+def test_api():
+    """Pytest wrapper for the API test"""
+    result = _run_api_test()
+    assert result == True, "API test failed"
+
 if __name__ == "__main__":
-    success = test_api()
+    success = _run_api_test()
     sys.exit(0 if success else 1)

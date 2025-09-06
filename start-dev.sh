@@ -24,11 +24,21 @@ cleanup() {
     echo "🛑 Shutting down services..."
     kill $BACKEND_PID 2>/dev/null
     kill $FRONTEND_PID 2>/dev/null
+    # Kill any remaining processes on common dev ports
+    lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+    lsof -ti:3001 | xargs kill -9 2>/dev/null || true
+    lsof -ti:8000 | xargs kill -9 2>/dev/null || true
     exit 0
 }
 
 # Set up trap to catch exit signals
 trap cleanup EXIT INT TERM
+
+# Clean up any existing processes on dev ports
+echo "🧹 Cleaning up existing processes..."
+lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+lsof -ti:3001 | xargs kill -9 2>/dev/null || true
+lsof -ti:8000 | xargs kill -9 2>/dev/null || true
 
 # Start Backend
 echo ""

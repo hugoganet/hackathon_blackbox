@@ -16,12 +16,12 @@ import time
 from sqlalchemy.orm import Session
 
 # Import our components
-from main import BlackboxMentor, load_env_file
-from database import (
+from .main import BlackboxMentor, load_env_file
+from .database import (
     get_db, create_tables, get_user_by_username, create_conversation, save_interaction,
     process_curator_analysis, get_user_skill_progression, populate_initial_data
 )
-from memory_store import get_memory_store, ConversationMemory
+from .memory_store import get_memory_store, ConversationMemory
 
 # Load environment variables
 load_dotenv()
@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
         print("✅ Database tables initialized")
         
         # Populate initial skill data
-        from database import SessionLocal
+        from .database import SessionLocal
         db = SessionLocal()
         try:
             populate_initial_data(db)
@@ -55,9 +55,9 @@ async def lifespan(app: FastAPI):
             db.close()
         
         # Initialize all mentor agents
-        normal_mentor = BlackboxMentor("agent-mentor.md")
-        strict_mentor = BlackboxMentor("agent-mentor-strict.md")
-        curator_agent = BlackboxMentor("curator-agent.md")
+        normal_mentor = BlackboxMentor("../agents/agent-mentor-strict.md")  # Use strict agent for now since no normal agent exists
+        strict_mentor = BlackboxMentor("../agents/agent-mentor-strict.md")
+        curator_agent = BlackboxMentor("../agents/curator-agent.md")
         print("✅ All mentor agents initialized successfully")
         
         # Initialize vector store (Chroma)
