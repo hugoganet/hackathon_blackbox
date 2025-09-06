@@ -117,7 +117,7 @@ class ConversationMemory:
         current_message: str,
         user_id: str,
         limit: int = 5,
-        similarity_threshold: float = 0.7,
+        similarity_threshold: float = 0.6,
         agent_type: Optional[str] = None,
         programming_language: Optional[str] = None
     ) -> List[Dict]:
