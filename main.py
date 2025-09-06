@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Mini programme qui utilise l'API Blackbox pour répondre aux questions des utilisateurs
-avec un prompt system personnalisé depuis agent-mentor.md
+Mini program that uses the Blackbox API to answer user questions
+with a custom system prompt from agent-mentor.md
 """
 
 import os
@@ -11,7 +11,7 @@ from typing import Optional
 from pathlib import Path
 
 def load_env_file():
-    """Charge les variables d'environnement depuis le fichier .env"""
+    """Load environment variables from .env file"""
     env_file = Path(".env")
     if env_file.exists():
         with open(env_file, 'r') as f:
@@ -28,31 +28,31 @@ class BlackboxMentor:
         self.system_prompt = self._load_system_prompt()
         
     def _load_system_prompt(self) -> str:
-        """Charge le prompt système depuis le fichier agent spécifié"""
+        """Load system prompt from specified agent file"""
         prompt_file = Path(self.agent_file)
         
         if not prompt_file.exists():
-            raise FileNotFoundError(f"Le fichier {prompt_file} est introuvable. Veuillez créer ce fichier avec le prompt système.")
+            raise FileNotFoundError(f"File {prompt_file} not found. Please create this file with the system prompt.")
         
         try:
             with open(prompt_file, 'r', encoding='utf-8') as f:
                 content = f.read().strip()
                 if not content:
-                    raise ValueError(f"Le fichier {prompt_file} est vide. Veuillez ajouter un prompt système.")
+                    raise ValueError(f"File {prompt_file} is empty. Please add a system prompt.")
                 return content
         except Exception as e:
-            raise RuntimeError(f"Erreur lors de la lecture du fichier {prompt_file}: {e}")
+            raise RuntimeError(f"Error reading file {prompt_file}: {e}")
     
     def _get_api_key(self) -> Optional[str]:
-        """Récupère la clé API depuis les variables d'environnement"""
+        """Get API key from environment variables"""
         return os.getenv('BLACKBOX_API_KEY')
     
     def call_blackbox_api(self, user_prompt: str) -> str:
-        """Appelle l'API Blackbox avec le prompt utilisateur"""
+        """Call Blackbox API with user prompt"""
         api_key = self._get_api_key()
         
         if not api_key:
-            return "❌ Erreur: Clé API Blackbox non configurée. Ajoutez BLACKBOX_API_KEY dans vos variables d'environnement."
+            return "❌ Error: Blackbox API key not configured. Add BLACKBOX_API_KEY to your environment variables."
         
         headers = {
             'Content-Type': 'application/json',
@@ -85,78 +85,78 @@ class BlackboxMentor:
             if 'choices' in data and len(data['choices']) > 0:
                 return data['choices'][0]['message']['content']
             else:
-                return "❌ Erreur: Réponse inattendue de l'API Blackbox"
+                return "❌ Error: Unexpected response from Blackbox API"
                 
         except requests.exceptions.RequestException as e:
-            return f"❌ Erreur de connexion à l'API: {e}"
+            return f"❌ API connection error: {e}"
         except json.JSONDecodeError as e:
-            return f"❌ Erreur de décodage JSON: {e}"
+            return f"❌ JSON decoding error: {e}"
         except Exception as e:
-            return f"❌ Erreur inattendue: {e}"
+            return f"❌ Unexpected error: {e}"
 
 def choose_agent() -> str:
-    """Permet à l'utilisateur de choisir quel agent utiliser"""
-    print("\n🎯 Choisissez votre agent mentor :")
-    print("1. Agent Mentor (donne des réponses complètes)")
-    print("2. Agent Mentor Strict (indices uniquement, idéal pour juniors)")
+    """Allow user to choose which agent to use"""
+    print("\n🎯 Choose your mentor agent:")
+    print("1. Mentor Agent (gives complete answers)")
+    print("2. Strict Mentor Agent (hints only, ideal for juniors)")
     
     while True:
         try:
-            choice = input("\nVotre choix (1 ou 2): ").strip()
+            choice = input("\nYour choice (1 or 2): ").strip()
             if choice == "1":
                 return "agent-mentor.md"
             elif choice == "2":
                 return "agent-mentor-strict.md"
             else:
-                print("⚠️  Veuillez saisir 1 ou 2")
+                print("⚠️  Please enter 1 or 2")
         except KeyboardInterrupt:
-            print("\n\n👋 Programme interrompu. Au revoir !")
+            print("\n\n👋 Program interrupted. Goodbye!")
             exit(0)
 
 def main():
-    """Fonction principale du programme"""
-    # Charger les variables d'environnement depuis .env
+    """Main program function"""
+    # Load environment variables from .env
     load_env_file()
     
-    print("🤖 Agent Mentor AI - Powered by Blackbox")
+    print("🤖 Mentor Agent AI - Powered by Blackbox")
     print("=" * 50)
     
-    # Choisir l'agent
+    # Choose the agent
     agent_file = choose_agent()
     
     try:
         mentor = BlackboxMentor(agent_file)
-        agent_name = "Agent Mentor" if "strict" not in agent_file else "Agent Mentor Strict"
-        print(f"✅ {agent_name} chargé avec succès depuis {agent_file}")
+        agent_name = "Mentor Agent" if "strict" not in agent_file else "Strict Mentor Agent"
+        print(f"✅ {agent_name} loaded successfully from {agent_file}")
     except Exception as e:
-        print(f"❌ Erreur lors de l'initialisation: {e}")
+        print(f"❌ Initialization error: {e}")
         return 1
     
-    print("Tapez 'quit' ou 'exit' pour quitter le programme\n")
+    print("Type 'quit' or 'exit' to exit the program\n")
     
     while True:
         try:
-            user_input = input("👤 Votre question: ").strip()
+            user_input = input("👤 Your question: ").strip()
             
             if user_input.lower() in ['quit', 'exit', 'q']:
-                print("\n👋 Au revoir ! Bonne programmation !")
+                print("\n👋 Goodbye! Happy programming!")
                 break
             
             if not user_input:
-                print("⚠️  Veuillez saisir une question.\n")
+                print("⚠️  Please enter a question.\n")
                 continue
             
-            print("\n🤔 Agent Mentor réfléchit...")
+            print("\n🤔 Mentor Agent is thinking...")
             response = mentor.call_blackbox_api(user_input)
             
-            print(f"\n🤖 Agent Mentor:\n{response}\n")
+            print(f"\n🤖 Mentor Agent:\n{response}\n")
             print("-" * 50)
             
         except KeyboardInterrupt:
-            print("\n\n👋 Programme interrompu. Au revoir !")
+            print("\n\n👋 Program interrupted. Goodbye!")
             break
         except Exception as e:
-            print(f"\n❌ Erreur inattendue: {e}\n")
+            print(f"\n❌ Unexpected error: {e}\n")
 
 if __name__ == "__main__":
     main()
