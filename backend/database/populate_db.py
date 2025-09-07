@@ -20,7 +20,7 @@ from models import (
 load_dotenv()
 
 # Database connection
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost:5432/dev_mentor")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost:5432/dev_mentor_ai")
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

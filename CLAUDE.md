@@ -246,8 +246,8 @@ git push origin main
 ### Testing
 ```bash
 # Set up test environment
-export DATABASE_URL="postgresql://postgres:password@localhost:5432/dev_mentor"
-export TEST_DATABASE_URL="postgresql://postgres:password@localhost:5432/test_dev_mentor"
+export DATABASE_URL="postgresql://postgres:password@localhost:5432/dev_mentor_ai"
+export TEST_DATABASE_URL="postgresql://postgres:password@localhost:5432/test_dev_mentor_ai"
 
 # Run test suite
 pytest tests/ -v
@@ -264,7 +264,7 @@ curl http://localhost:8000/agents
 ### Database Setup
 ```bash
 # Set required environment variable
-export DATABASE_URL="postgresql://postgres:password@localhost:5432/dev_mentor"
+export DATABASE_URL="postgresql://postgres:password@localhost:5432/dev_mentor_ai"
 
 # Create database tables
 python3 -c "from backend.database import create_tables; create_tables()"

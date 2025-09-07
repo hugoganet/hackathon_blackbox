@@ -126,8 +126,8 @@ pip install pytest pytest-asyncio httpx
 ### Run All Tests
 ```bash
 # Set up PostgreSQL test database URL
-export TEST_DATABASE_URL="postgresql://postgres:test@localhost:5432/test_dev_mentor"
-export DATABASE_URL="postgresql://postgres:test@localhost:5432/dev_mentor"
+export TEST_DATABASE_URL="postgresql://postgres:test@localhost:5432/test_dev_mentor_ai"
+export DATABASE_URL="postgresql://postgres:test@localhost:5432/dev_mentor_ai"
 
 # Run all tests with verbose output
 pytest tests/ -v

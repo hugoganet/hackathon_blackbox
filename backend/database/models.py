@@ -12,7 +12,7 @@ import os
 
 # Database configuration - PostgreSQL only
 # Railway automatically provides DATABASE_URL environment variable
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost:5432/dev_mentor")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost:5432/dev_mentor_ai")
 
 # Ensure we're using PostgreSQL
 if not DATABASE_URL.startswith(("postgresql://", "postgres://")):
