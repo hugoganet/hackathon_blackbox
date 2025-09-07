@@ -14,15 +14,13 @@ from typing import Generator, List, Optional
 
 # Database configuration - PostgreSQL only
 # Railway automatically provides DATABASE_URL environment variable
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost:5432/dev_mentor")
 
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is required. This application requires PostgreSQL.")
+# Ensure we're using PostgreSQL
+if not DATABASE_URL.startswith(("postgresql://", "postgres://")):
+    raise ValueError("DATABASE_URL must be a PostgreSQL connection string")
 
-if not DATABASE_URL.startswith("postgresql"):
-    raise ValueError("Only PostgreSQL databases are supported. Please provide a PostgreSQL DATABASE_URL.")
-
-# PostgreSQL-only SQLAlchemy setup
+# SQLAlchemy setup - PostgreSQL only
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,  # Verify connections before use
@@ -34,7 +32,7 @@ Base = declarative_base()
 
 # Database Models
 
-# PostgreSQL UUID column type
+# PostgreSQL UUID type
 UUIDType = UUID(as_uuid=True)
 
 class User(Base):
@@ -43,7 +41,7 @@ class User(Base):
     """
     __tablename__ = "users"
     
-    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4, name='id_user')
     username = Column(String(50), unique=True, nullable=False)
     email = Column(String(255), unique=True, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -60,7 +58,7 @@ class Conversation(Base):
     __tablename__ = "conversations"
     
     id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUIDType, ForeignKey("users.id"), nullable=False)
+    user_id = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
     session_id = Column(String(255), nullable=False, index=True)
     agent_type = Column(String(20), nullable=False)  # "normal" or "strict"
     title = Column(String(255), nullable=True)  # Optional conversation title
@@ -109,7 +107,7 @@ class MemoryEntry(Base):
     __tablename__ = "memory_entries"
     
     id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUIDType, ForeignKey("users.id"), nullable=False)
+    user_id = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
     
     # Learning insights
     concept = Column(String(100), nullable=False)  # e.g., "react_hooks", "async_await"
@@ -165,7 +163,7 @@ class SkillHistory(Base):
     __tablename__ = "skill_history"
     
     id_history = Column(UUIDType, primary_key=True, default=uuid.uuid4)
-    id_user = Column(UUIDType, ForeignKey("users.id"), nullable=False)
+    id_user = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
     id_skill = Column(Integer, ForeignKey("skills.id_skill"), nullable=False)
     mastery_level = Column(Integer, nullable=False, default=1)
     snapshot_date = Column(Date, nullable=False, default=date.today)
@@ -217,13 +215,12 @@ def create_conversation(db: Session, user_id: str, session_id: str, agent_type: 
     """
     Create new conversation record
     """
-    # Handle UUID for PostgreSQL
+    # PostgreSQL: convert string to UUID object
     if isinstance(user_id, str):
         user_id = uuid.UUID(user_id)
-    conversation_id = uuid.uuid4()
     
     conversation = Conversation(
-        id=conversation_id,
+        id=uuid.uuid4(),
         user_id=user_id,
         session_id=session_id,
         agent_type=agent_type
@@ -243,13 +240,12 @@ def save_interaction(
     """
     Save interaction to database for memory and analytics
     """
-    # Handle UUID for PostgreSQL
+    # PostgreSQL: convert string to UUID object
     if isinstance(conversation_id, str):
         conversation_id = uuid.UUID(conversation_id)
-    interaction_id = uuid.uuid4()
     
     interaction = Interaction(
-        id=interaction_id,
+        id=uuid.uuid4(),
         conversation_id=conversation_id,
         user_message=user_message,
         mentor_response=mentor_response,
@@ -299,7 +295,7 @@ def update_skill_history(db: Session, user_id: str, skill_name: str, confidence:
     # Get or create skill
     skill = create_or_update_skill(db, skill_name, domain_name=domain_name)
     
-    # Get user UUID for PostgreSQL
+    # PostgreSQL: convert string to UUID object
     user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
     
     # Check for existing skill history today
@@ -319,10 +315,8 @@ def update_skill_history(db: Session, user_id: str, skill_name: str, confidence:
         return existing_history
     else:
         # Create new skill history entry
-        history_id = uuid.uuid4()
-        
         skill_history = SkillHistory(
-            id_history=history_id,
+            id_history=uuid.uuid4(),
             id_user=user_uuid,
             id_skill=skill.id_skill,
             mastery_level=mastery_level,
@@ -337,7 +331,7 @@ def get_user_skill_progression(db: Session, user_id: str, limit: int = 20) -> Li
     """
     Get user's skill progression history
     """
-    # Handle UUID for PostgreSQL
+    # PostgreSQL: convert string to UUID object
     user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
     
     # Query skill history with skill names

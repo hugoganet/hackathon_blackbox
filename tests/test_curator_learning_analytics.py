@@ -20,7 +20,7 @@ from backend.main import BlackboxMentor
 def setup_curator_agent():
     """Initialize curator agent for testing"""
     try:
-        curator = BlackboxMentor("curator-agent.md")
+        curator = BlackboxMentor("agents/curator-agent.md")
         yield curator
     except Exception as e:
         pytest.skip(f"Could not initialize curator agent: {e}")
@@ -80,7 +80,7 @@ class TestSkillsExtraction:
         mock_response = json.dumps(conversation["expected_curator_output"])
         
         with CuratorTestHelper.mock_blackbox_api(mock_response):
-            curator = BlackboxMentor("curator-agent.md")
+            curator = BlackboxMentor("agents/curator-agent.md")
             response = curator.call_blackbox_api("SQL query conversation")
             
             analysis = json.loads(response)
@@ -99,7 +99,7 @@ class TestSkillsExtraction:
             mock_response = json.dumps(expected_output)
             
             with CuratorTestHelper.mock_blackbox_api(mock_response):
-                curator = BlackboxMentor("curator-agent.md")
+                curator = BlackboxMentor("agents/curator-agent.md")
                 response = curator.call_blackbox_api("Conversation analysis")
                 
                 analysis = json.loads(response)
@@ -121,7 +121,7 @@ class TestMistakesIdentification:
         mock_response = json.dumps(conversation["expected_curator_output"])
         
         with CuratorTestHelper.mock_blackbox_api(mock_response):
-            curator = BlackboxMentor("curator-agent.md")
+            curator = BlackboxMentor("agents/curator-agent.md")
             response = curator.call_blackbox_api("JavaScript error analysis")
             
             analysis = json.loads(response)
@@ -144,7 +144,7 @@ class TestMistakesIdentification:
         mock_response = json.dumps(conversation["expected_curator_output"])
         
         with CuratorTestHelper.mock_blackbox_api(mock_response):
-            curator = BlackboxMentor("curator-agent.md")
+            curator = BlackboxMentor("agents/curator-agent.md")
             response = curator.call_blackbox_api("React error analysis")
             
             analysis = json.loads(response)
@@ -163,7 +163,7 @@ class TestMistakesIdentification:
         junior_mock = json.dumps(junior_conversation["expected_curator_output"])
         
         with CuratorTestHelper.mock_blackbox_api(junior_mock):
-            curator = BlackboxMentor("curator-agent.md")
+            curator = BlackboxMentor("agents/curator-agent.md")
             response = curator.call_blackbox_api("Junior conversation")
             junior_analysis = json.loads(response)
         
@@ -191,7 +191,7 @@ class TestKnowledgeGapAnalysis:
         mock_response = json.dumps(conversation["expected_curator_output"])
         
         with CuratorTestHelper.mock_blackbox_api(mock_response):
-            curator = BlackboxMentor("curator-agent.md")
+            curator = BlackboxMentor("agents/curator-agent.md")
             response = curator.call_blackbox_api("Knowledge gap analysis")
             
             analysis = json.loads(response)
@@ -221,7 +221,7 @@ class TestKnowledgeGapAnalysis:
             mock_response = json.dumps(expected_output)
             
             with CuratorTestHelper.mock_blackbox_api(mock_response):
-                curator = BlackboxMentor("curator-agent.md")
+                curator = BlackboxMentor("agents/curator-agent.md")
                 response = curator.call_blackbox_api(f"Analysis for {level} developer")
                 
                 analysis = json.loads(response)
@@ -242,7 +242,7 @@ class TestNextStepsRecommendations:
         mock_response = json.dumps(conversation["expected_curator_output"])
         
         with CuratorTestHelper.mock_blackbox_api(mock_response):
-            curator = BlackboxMentor("curator-agent.md")
+            curator = BlackboxMentor("agents/curator-agent.md")
             response = curator.call_blackbox_api("Next steps analysis")
             
             analysis = json.loads(response)
@@ -268,7 +268,7 @@ class TestNextStepsRecommendations:
         mock_response = json.dumps(expected_output)
         
         with CuratorTestHelper.mock_blackbox_api(mock_response):
-            curator = BlackboxMentor("curator-agent.md")
+            curator = BlackboxMentor("agents/curator-agent.md")
             response = curator.call_blackbox_api("Skill-aligned recommendations")
             
             analysis = json.loads(response)
@@ -314,7 +314,7 @@ class TestConfidenceAssessment:
                 mock_response = json.dumps(expected_output)
                 
                 with CuratorTestHelper.mock_blackbox_api(mock_response):
-                    curator = BlackboxMentor("curator-agent.md")
+                    curator = BlackboxMentor("agents/curator-agent.md")
                     response = curator.call_blackbox_api(f"Confidence assessment - {test_case['level']}")
                     
                     analysis = json.loads(response)
@@ -331,7 +331,7 @@ class TestConfidenceAssessment:
             mock_response = json.dumps(expected_output)
             
             with CuratorTestHelper.mock_blackbox_api(mock_response):
-                curator = BlackboxMentor("curator-agent.md")
+                curator = BlackboxMentor("agents/curator-agent.md")
                 response = curator.call_blackbox_api("Confidence validation test")
                 
                 analysis = json.loads(response)
@@ -349,7 +349,7 @@ class TestConfidenceAssessment:
         simple_mock = json.dumps(simple_conversation["expected_curator_output"])
         
         with CuratorTestHelper.mock_blackbox_api(simple_mock):
-            curator = BlackboxMentor("curator-agent.md")
+            curator = BlackboxMentor("agents/curator-agent.md")
             response = curator.call_blackbox_api("Simple conversation")
             simple_analysis = json.loads(response)
         
@@ -377,7 +377,7 @@ class TestLearningAnalyticsQuality:
             mock_response = json.dumps(expected_output)
             
             with CuratorTestHelper.mock_blackbox_api(mock_response):
-                curator = BlackboxMentor("curator-agent.md")
+                curator = BlackboxMentor("agents/curator-agent.md")
                 response = curator.call_blackbox_api("Consistency test")
                 
                 analysis = json.loads(response)
@@ -409,7 +409,7 @@ class TestLearningAnalyticsQuality:
             mock_response = json.dumps(expected_output)
             
             with CuratorTestHelper.mock_blackbox_api(mock_response):
-                curator = BlackboxMentor("curator-agent.md")
+                curator = BlackboxMentor("agents/curator-agent.md")
                 response = curator.call_blackbox_api("Domain classification test")
                 
                 analysis = json.loads(response)
@@ -456,7 +456,7 @@ class TestLearningProgressionTracking:
             mock_response = json.dumps(expected_output)
             
             with CuratorTestHelper.mock_blackbox_api(mock_response):
-                curator = BlackboxMentor("curator-agent.md")
+                curator = BlackboxMentor("agents/curator-agent.md")
                 response = curator.call_blackbox_api(f"Progression test - {scenario['stage']}")
                 
                 analysis = json.loads(response)
