@@ -8,7 +8,7 @@ interface ChatPanelProps {
   code: string;
 }
 
-const ChatPanel: React.FC<ChatPanelProps> = ({ code }) => {
+const ChatPanel: React.FC<ChatPanelProps> = ({ code: _code }) => {
   const { messages, loading, error, sendMessage, clearChat, retryLastMessage } = useChat();
 
   const handleSendMessage = async (message: string) => {

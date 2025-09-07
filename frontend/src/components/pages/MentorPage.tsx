@@ -5,7 +5,7 @@ import FileExplorer from '../mentor/FileExplorer';
 
 const MentorPage: React.FC = () => {
   const [code, setCode] = useState<string>('function hello() {\n  console.log("Hello, World!");\n}\n\nhello();');
-  const [selectedFile, setSelectedFile] = useState<string>('main.js');
+  const [_selectedFile, setSelectedFile] = useState<string>('main.js');
   const [panelSizes, setPanelSizes] = useState({ left: 25, middle: 50, right: 25 });
   const [isResizing, setIsResizing] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -44,7 +44,7 @@ const MentorPage: React.FC = () => {
       setPanelSizes({ left: newLeft, middle: newMiddle, right: newRight });
     } else if (isResizing === 'middle') {
       const leftWidth = panelSizes.left;
-      const rightStart = leftWidth + panelSizes.middle;
+      const _rightStart = leftWidth + panelSizes.middle;
       const newMiddle = Math.max(30, Math.min(70, percentage - leftWidth));
       const newRight = 100 - leftWidth - newMiddle;
       if (newRight >= 20) {

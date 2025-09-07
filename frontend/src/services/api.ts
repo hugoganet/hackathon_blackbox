@@ -138,7 +138,7 @@ export const apiService = {
       const flashcards = await this.getDueFlashcards(getDefaultUserId(), limit);
       
       // Transform flashcards to quiz questions format
-      return flashcards.flashcards.map((card, index) => ({
+      return flashcards.flashcards.map((card) => ({
         id: card.id,
         question: card.question,
         options: [

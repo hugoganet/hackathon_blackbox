@@ -33,7 +33,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
         <div className="flex items-center space-x-2">
           <select
             value={language}
-            onChange={(e) => {}}
+            onChange={() => {}}
             className="bg-gray-700 text-white text-sm px-2 py-1 rounded border-none focus:outline-none"
           >
             <option value="javascript">JavaScript</option>
@@ -71,7 +71,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
             showFoldingControls: 'always',
             smoothScrolling: true,
             cursorBlinking: 'blink',
-            cursorSmoothCaretAnimation: true,
+            cursorSmoothCaretAnimation: 'on',
             renderLineHighlight: 'line',
             bracketPairColorization: {
               enabled: true

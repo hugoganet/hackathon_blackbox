@@ -8,7 +8,7 @@ interface MetricsCardProps {
 }
 
 const MetricsCard: React.FC<MetricsCardProps> = ({ junior }) => {
-  const formatDate = (date: Date) => {
+  const _formatDate = (date: Date) => {
     return new Intl.DateTimeFormat('en-US', {
       month: 'short',
       day: 'numeric',

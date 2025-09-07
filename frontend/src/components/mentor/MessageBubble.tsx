@@ -28,12 +28,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
     let formattedContent = content;
 
     // Replace code blocks
-    formattedContent = formattedContent.replace(codeBlockRegex, (match, language, code) => {
+    formattedContent = formattedContent.replace(codeBlockRegex, (_match, _language, code) => {
       return `<pre class="bg-gray-900 text-gray-100 p-3 rounded-lg overflow-x-auto my-2"><code class="text-sm font-mono">${code.trim()}</code></pre>`;
     });
 
     // Replace inline code
-    formattedContent = formattedContent.replace(inlineCodeRegex, (match, code) => {
+    formattedContent = formattedContent.replace(inlineCodeRegex, (_match, code) => {
       return `<code class="bg-gray-100 text-gray-800 px-1 py-0.5 rounded text-sm font-mono">${code}</code>`;
     });
 

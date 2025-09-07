@@ -91,8 +91,8 @@ export const mockApiResponses = {
 // Helper to setup fetch mock for specific test
 export const setupFetchMock = (responses: Record<string, any>) => {
   const mockFetch = global.fetch as jest.MockedFunction<typeof fetch>;
-  mockFetch.mockImplementation((url: string | Request, options?: RequestInit) => {
-    const urlString = typeof url === 'string' ? url : url.url;
+  mockFetch.mockImplementation((url: string | URL | Request, options?: RequestInit) => {
+    const urlString = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
     const method = options?.method || 'GET';
     const endpoint = urlString.replace('http://localhost:8000', '');
     

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { File, Folder, Plus, FileText, Code, Settings } from 'lucide-react';
+import { Folder, Plus, FileText, Code, Settings } from 'lucide-react';
 
 interface FileItem {
   id: string;
