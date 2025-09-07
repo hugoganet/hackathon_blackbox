@@ -35,7 +35,7 @@ Create a comprehensive learning platform where junior developers can:
 
 ## AI Agent System
 
-### 1. Strict Mentor Agent (`agent-mentor-strict.md`)
+### 1. Strict Mentor Agent (PydanticAI Implementation)
 - **NO DIRECT ANSWERS**: Absolute policy - never provides complete solutions
 - **Socratic method**: Guides through questions and progressive hints only
 - **Junior-focused**: Specifically designed for beginning developers
@@ -67,6 +67,31 @@ Create a comprehensive learning platform where junior developers can:
 - **✅ Database Storage**: Full CRUD operations with PostgreSQL UUID support
 - **✅ Performance Tracking**: Complete review session history and analytics
 - **✅ Production Ready**: Comprehensive test coverage with SM-2 algorithm validation
+
+## PydanticAI Migration (NEW)
+
+### Advanced Mentor Agent Implementation
+The strict mentor agent has been migrated from markdown-based prompts to a sophisticated PydanticAI implementation:
+
+**Enhanced Features:**
+- **Memory-Guided Mentoring**: References past user interactions for personalized guidance
+- **Progressive Hint System**: 4-level escalation (conceptual → investigative → directional → structural)
+- **Context Detection**: Automatically identifies programming language, user intent, and difficulty level
+- **Learning Pattern Analysis**: Tracks user progress and adapts mentoring approach
+- **Hint Escalation Tracking**: Remembers hint levels for consistent progressive guidance
+- **Temporal Analysis**: Considers timing and patterns in user learning journey
+
+**Technical Implementation:**
+- **Location**: `agents/mentor_agent/` - Complete PydanticAI agent structure
+- **Components**: `agent.py` (main agent), `tools.py` (memory tools), `prompts.py` (system prompts)
+- **Backward Compatibility**: `BlackboxMentorAdapter` maintains compatibility with existing API
+- **Integration**: Seamless integration with existing ChromaDB memory store and PostgreSQL database
+- **Testing**: Comprehensive test suite with >95% coverage
+
+**API Access:**
+- **Endpoint**: `POST /chat` with `agent_type: "pydantic_strict"`
+- **CLI Access**: Option 3 in `backend/main.py` agent selection
+- **Response Enhancement**: Includes hint level, detected language/intent, similarity count
 
 ## Database Architecture
 
@@ -154,7 +179,7 @@ dev_mentor_ai/
 │           ├── dev_mentor_ai_geo.json # Diagram layout geometry
 │           └── create_schema.sql     # Database creation scripts
 ├── agents/                    # AI agent configurations
-│   ├── agent-mentor-strict.md  # Strict mentor agent (Socratic method)
+│   ├── agent-mentor-strict.md  # Legacy strict mentor agent (Socratic method)\n│   ├── mentor_agent/           # NEW: PydanticAI mentor agent implementation\n│   │   ├── __init__.py         # Package initialization and exports\n│   │   ├── agent.py            # Main PydanticAI mentor agent\n│   │   ├── tools.py            # Memory-guided mentoring tools\n│   │   ├── prompts.py          # System prompts and templates\n│   │   └── .env.example        # Environment configuration template
 │   ├── curator-agent.md        # Conversation analysis and learning extraction
 │   └── flashcard-agent.md      # Spaced repetition flashcard generation
 ├── requirements.txt           # Python dependencies

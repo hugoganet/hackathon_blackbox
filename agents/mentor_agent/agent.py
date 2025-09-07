@@ -1,275 +1,347 @@
 """
-Mentor Agent - Memory-Enhanced Socratic Programming Mentor
-
-A Pydantic AI agent that guides junior developers through learning using the Socratic method,
-enhanced with memory of past interactions to provide personalized guidance.
+PydanticAI Mentor Agent
+Main agent implementation with memory-guided mentoring capabilities
 """
 
-import logging
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
+from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
+from pydantic_ai.models import Model
+import os
+import asyncio
+from datetime import datetime
 
-from .providers import get_mentor_llm_model, get_fallback_model
-from .dependencies import MentorDependencies
-from .settings import mentor_settings
-from .prompts import SYSTEM_PROMPT, recent_repeat_context, pattern_recognition_context, skill_building_context
-from .tools import memory_search, save_interaction, analyze_learning_pattern, hint_escalation_tracker, detect_confusion_signals
-
-logger = logging.getLogger(__name__)
-
-# Initialize the mentor agent with OpenAI
-mentor_agent = Agent(
-    get_mentor_llm_model(),
-    deps_type=MentorDependencies,
-    system_prompt=SYSTEM_PROMPT,
-    retries=mentor_settings.max_retries
+from .prompts import (
+    STRICT_MENTOR_SYSTEM_PROMPT, 
+    format_memory_context,
+    get_hint_escalation_response,
+    get_frustration_response,
+    get_progress_celebration
 )
+from .tools import MentorTools, MemoryContext
 
-# Register dynamic system prompts for different learning contexts
-mentor_agent.system_prompt(recent_repeat_context)
-mentor_agent.system_prompt(pattern_recognition_context)
-mentor_agent.system_prompt(skill_building_context)
-
-# Register fallback model if available
-fallback = get_fallback_model()
-if fallback:
-    mentor_agent.models.append(fallback)
-    logger.info("Fallback model configured for mentor agent")
-
-
-# Tool 1: Memory Search
-@mentor_agent.tool
-async def search_memory(
-    ctx: RunContext[MentorDependencies], 
-    query: str, 
-    limit: int = 3
-) -> List[Dict[str, Any]]:
-    """
-    Search for similar past learning interactions to provide memory context.
-    
-    Args:
-        query: Current user question to search for similar past issues
-        limit: Maximum number of similar interactions to retrieve
-    
-    Returns:
-        List of similar past interactions with metadata
-    """
-    return await memory_search(ctx, query, ctx.deps.user_id, limit)
-
-
-# Tool 2: Save Interaction
-@mentor_agent.tool
-async def save_learning_interaction(
-    ctx: RunContext[MentorDependencies],
-    user_message: str,
-    mentor_response: str,
-    hint_level: Optional[int] = None,
-    referenced_memories: Optional[List[str]] = None
-) -> Dict[str, Any]:
-    """
-    Save the current learning interaction for future reference.
-    
-    Args:
-        user_message: The user's question or message
-        mentor_response: The mentor's Socratic response
-        hint_level: Current hint escalation level (1-4)
-        referenced_memories: IDs of past memories referenced in response
-    
-    Returns:
-        Confirmation of interaction saved with metadata
-    """
-    hint_level = hint_level or ctx.deps.current_hint_level
-    return await save_interaction(
-        ctx, ctx.deps.user_id, user_message, mentor_response, hint_level, referenced_memories
-    )
-
-
-# Tool 3: Analyze Learning Pattern
-@mentor_agent.tool_plain
-def classify_learning_opportunity(
-    similarity_score: float,
-    days_ago: int,
-    interaction_count: int = 1
-) -> Dict[str, Any]:
-    """
-    Classify the type of learning opportunity based on past interactions.
-    
-    Args:
-        similarity_score: How similar current question is to past questions (0-1)
-        days_ago: Days since the most similar past interaction
-        interaction_count: Number of similar past interactions
-    
-    Returns:
-        Learning pattern classification and suggested approach
-    """
-    return analyze_learning_pattern(similarity_score, days_ago, interaction_count)
-
-
-# Tool 4: Hint Escalation Tracker
-@mentor_agent.tool
-async def track_hint_escalation(
-    ctx: RunContext[MentorDependencies],
-    user_message: str
-) -> Dict[str, Any]:
-    """
-    Track conversation depth and determine appropriate hint escalation level.
-    
-    Args:
-        user_message: Latest message from user to analyze for confusion signals
-    
-    Returns:
-        Hint level recommendation and escalation status
-    """
-    confusion_signals = detect_confusion_signals(user_message)
-    return await hint_escalation_tracker(ctx, ctx.deps.session_id, confusion_signals)
-
-
-# Convenience functions for using the mentor agent
-
-async def run_mentor_agent(
-    prompt: str,
-    user_id: str,
-    session_id: Optional[str] = None,
-    **dependency_overrides
-) -> str:
-    """
-    Run the mentor agent with automatic dependency injection.
-    
-    Args:
-        prompt: User's programming question
-        user_id: User identifier for memory retrieval
-        session_id: Optional session identifier for hint tracking
-        **dependency_overrides: Override default dependencies
-    
-    Returns:
-        Mentor's Socratic response as string
-    """
-    deps = MentorDependencies.from_settings(
-        mentor_settings,
-        user_id=user_id,
-        session_id=session_id,
-        **dependency_overrides
-    )
-    
-    try:
-        # Search for similar past interactions first
-        similar_interactions = await memory_search(None, prompt, user_id, 3)
-        
-        # Analyze learning pattern if we found similar interactions
-        if similar_interactions:
-            most_similar = similar_interactions[0]
-            pattern_analysis = analyze_learning_pattern(
-                most_similar['similarity_score'],
-                most_similar['days_ago'],
-                len(similar_interactions)
-            )
-            # Add pattern analysis to deps for dynamic prompts
-            deps.learning_classification = pattern_analysis['pattern_type']
-        
-        # Run the agent
-        result = await mentor_agent.run(prompt, deps=deps)
-        
-        # Save the interaction for future reference
-        await save_interaction(None, user_id, prompt, result.data, deps.current_hint_level)
-        
-        return result.data
-    except Exception as e:
-        logger.error(f"Mentor agent execution failed: {e}")
-        return "I apologize, but I'm having trouble accessing my memory systems right now. Let's work through your question step by step. What specific programming challenge are you facing?"
-    finally:
-        await deps.cleanup()
-
-
-async def run_mentor_conversation(
-    messages: List[Dict[str, str]],
-    user_id: str,
+class MentorAgentDeps(BaseModel):
+    """Dependencies for the Mentor Agent"""
+    memory_store: Optional[Any] = None
+    db_session: Optional[Any] = None
+    user_id: str
     session_id: Optional[str] = None
-) -> str:
+
+class MentorResponse(BaseModel):
+    """Structured response from the mentor agent"""
+    response: str
+    hint_level: Optional[int] = None
+    memory_context_used: bool = False
+    detected_language: Optional[str] = None
+    detected_intent: Optional[str] = None
+    similar_interactions_count: int = 0
+
+class MentorAgent:
     """
-    Run a multi-turn conversation with the mentor agent.
+    PydanticAI-based Strict Mentor Agent
+    
+    Provides memory-guided mentoring with progressive hints while maintaining
+    strict pedagogical principles of never giving direct answers.
+    """
+    
+    def __init__(self, model: Optional[Model] = None):
+        """
+        Initialize the Mentor Agent
+        
+        Args:
+            model: PydanticAI model instance (defaults to OpenAI if not provided)
+        """
+        # Use OpenAI as default model if none provided
+        if model is None:
+            from pydantic_ai.models.openai import OpenAIModel
+            api_key = os.getenv('OPENAI_API_KEY') or os.getenv('BLACKBOX_API_KEY')
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY or BLACKBOX_API_KEY must be set")
+            model = OpenAIModel('gpt-4', api_key=api_key)
+        
+        # Initialize the PydanticAI agent
+        self.agent = Agent(
+            model=model,
+            result_type=MentorResponse,
+            system_prompt=STRICT_MENTOR_SYSTEM_PROMPT,
+            deps_type=MentorAgentDeps
+        )
+        
+        # Register tools
+        self._register_tools()
+        
+        print("✅ PydanticAI Mentor Agent initialized")
+    
+    def _register_tools(self):
+        """Register tools with the PydanticAI agent"""
+        
+        @self.agent.tool
+        async def get_memory_context(ctx: RunContext[MentorAgentDeps], user_message: str) -> str:
+            """
+            Retrieve memory context for personalized mentoring
+            
+            Args:
+                user_message: Current user question
+                
+            Returns:
+                Formatted memory context string
+            """
+            tools = MentorTools(ctx.deps.memory_store, ctx.deps.db_session)
+            
+            memory_context = await tools.get_memory_context(
+                user_id=ctx.deps.user_id,
+                current_message=user_message,
+                session_id=ctx.deps.session_id
+            )
+            
+            # Format memory context for the agent
+            if memory_context.similar_interactions or memory_context.learning_patterns.total_interactions > 0:
+                patterns_dict = {
+                    "total_interactions": memory_context.learning_patterns.total_interactions,
+                    "most_common_language": memory_context.learning_patterns.most_common_language,
+                    "most_common_intent": memory_context.learning_patterns.most_common_intent,
+                    "languages_practiced": memory_context.learning_patterns.languages_practiced
+                }
+                
+                similar_interactions = [
+                    {
+                        "user_message": interaction.user_message,
+                        "similarity": interaction.similarity,
+                        "metadata": interaction.metadata
+                    }
+                    for interaction in memory_context.similar_interactions
+                ]
+                
+                return format_memory_context(patterns_dict, similar_interactions)
+            
+            return "No previous learning history available for this user."
+        
+        @self.agent.tool
+        async def track_hint_progression(ctx: RunContext[MentorAgentDeps], question: str, hint: str) -> str:
+            """
+            Track hint escalation and provide appropriate level of guidance
+            
+            Args:
+                question: Current question being asked
+                hint: Hint being provided
+                
+            Returns:
+                Formatted hint response with appropriate escalation
+            """
+            tools = MentorTools(ctx.deps.memory_store, ctx.deps.db_session)
+            
+            hint_level = await tools.track_hint_escalation(
+                user_id=ctx.deps.user_id,
+                session_id=ctx.deps.session_id or "default",
+                question=question,
+                hint=hint
+            )
+            
+            return get_hint_escalation_response(hint_level, hint)
+        
+        @self.agent.tool
+        async def analyze_user_context(ctx: RunContext[MentorAgentDeps], user_message: str) -> str:
+            """
+            Analyze user intent and programming language from their message
+            
+            Args:
+                user_message: User's question or message
+                
+            Returns:
+                Context analysis for better response customization
+            """
+            tools = MentorTools(ctx.deps.memory_store, ctx.deps.db_session)
+            
+            intent = await tools.classify_user_intent(user_message)
+            language = await tools.detect_programming_language(user_message)
+            difficulty = await tools.analyze_difficulty_level(user_message)
+            
+            return f"Context Analysis - Intent: {intent}, Language: {language}, Difficulty: {difficulty}"
+        
+        @self.agent.tool
+        async def provide_encouragement(ctx: RunContext[MentorAgentDeps]) -> str:
+            """
+            Provide encouraging response for user progress
+            
+            Returns:
+                Encouraging message template
+            """
+            return get_progress_celebration()
+        
+        @self.agent.tool
+        async def handle_frustration(ctx: RunContext[MentorAgentDeps]) -> str:
+            """
+            Handle user frustration with supportive guidance
+            
+            Returns:
+                Supportive response template
+            """
+            return get_frustration_response()
+    
+    async def respond(
+        self, 
+        user_message: str, 
+        user_id: str,
+        session_id: Optional[str] = None,
+        memory_store: Optional[Any] = None,
+        db_session: Optional[Any] = None
+    ) -> MentorResponse:
+        """
+        Generate mentor response to user message
+        
+        Args:
+            user_message: User's question or message
+            user_id: User identifier
+            session_id: Session identifier
+            memory_store: ConversationMemory instance
+            db_session: Database session
+            
+        Returns:
+            MentorResponse with guidance and metadata
+        """
+        deps = MentorAgentDeps(
+            memory_store=memory_store,
+            db_session=db_session,
+            user_id=user_id,
+            session_id=session_id
+        )
+        
+        try:
+            # Run the PydanticAI agent
+            result = await self.agent.run(user_message, deps=deps)
+            
+            # Extract metadata from tools if available
+            tools = MentorTools(memory_store, db_session)
+            detected_language = await tools.detect_programming_language(user_message)
+            detected_intent = await tools.classify_user_intent(user_message)
+            
+            # Get memory context to count similar interactions
+            memory_context = await tools.get_memory_context(user_id, user_message, session_id)
+            
+            # Store this interaction for future reference
+            if memory_store:
+                await tools.store_interaction(
+                    user_id=user_id,
+                    user_message=user_message,
+                    mentor_response=result.data.response,
+                    session_id=session_id,
+                    metadata={
+                        "detected_language": detected_language,
+                        "detected_intent": detected_intent,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                )
+            
+            return MentorResponse(
+                response=result.data.response,
+                memory_context_used=len(memory_context.similar_interactions) > 0,
+                detected_language=detected_language,
+                detected_intent=detected_intent,
+                similar_interactions_count=len(memory_context.similar_interactions)
+            )
+            
+        except Exception as e:
+            # Fallback response if PydanticAI fails
+            return MentorResponse(
+                response=f"I apologize, but I'm having trouble processing your question right now. "
+                        f"However, I can still help! Let's start with this: what specific part of "
+                        f"your problem would you like to focus on first? What have you already tried?",
+                memory_context_used=False,
+                detected_language="unknown",
+                detected_intent="general",
+                similar_interactions_count=0
+            )
+    
+    async def respond_sync(
+        self,
+        user_message: str,
+        user_id: str, 
+        session_id: Optional[str] = None,
+        memory_store: Optional[Any] = None,
+        db_session: Optional[Any] = None
+    ) -> MentorResponse:
+        """
+        Synchronous wrapper for respond method
+        
+        This allows integration with existing synchronous code
+        """
+        return await self.respond(user_message, user_id, session_id, memory_store, db_session)
+
+class BlackboxMentorAdapter:
+    """
+    Adapter to maintain compatibility with existing BlackboxMentor interface
+    
+    This allows gradual migration from the old system to PydanticAI
+    """
+    
+    def __init__(self, agent_file: Optional[str] = None):
+        """Initialize the adapter with PydanticAI mentor"""
+        self.mentor_agent = MentorAgent()
+        self.agent_file = agent_file  # Kept for compatibility
+    
+    def call_blackbox_api(self, user_prompt: str, user_id: str = "anonymous") -> str:
+        """
+        Compatibility method that mimics the original BlackboxMentor interface
+        
+        Args:
+            user_prompt: User's question
+            user_id: User identifier (defaults to anonymous)
+            
+        Returns:
+            Mentor response as string
+        """
+        try:
+            # Run async method in sync context
+            loop = None
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            if loop.is_running():
+                # If loop is already running, use sync method
+                import asyncio
+                result = asyncio.create_task(self.mentor_agent.respond(user_prompt, user_id))
+                # This is a workaround for environments where async isn't easily available
+                return self._sync_fallback(user_prompt)
+            else:
+                result = loop.run_until_complete(
+                    self.mentor_agent.respond(user_prompt, user_id)
+                )
+                return result.response
+                
+        except Exception as e:
+            # Fallback to basic mentor behavior
+            return self._sync_fallback(user_prompt)
+    
+    def _sync_fallback(self, user_prompt: str) -> str:
+        """Synchronous fallback if async execution fails"""
+        # Basic Socratic response patterns
+        if any(word in user_prompt.lower() for word in ["please give me", "just tell me", "what's the answer"]):
+            return ("I understand you'd like a direct answer, but my role is to help you discover "
+                   "the solution yourself. What have you tried so far? What's your current understanding "
+                   "of this problem?")
+        
+        if any(word in user_prompt.lower() for word in ["error", "not working", "bug"]):
+            return ("Let's debug this step by step! First, can you tell me exactly what error "
+                   "message you're seeing? And what did you expect to happen instead?")
+        
+        return ("That's a great question! Before I guide you toward the answer, help me understand "
+               "your current approach. What have you tried so far, and what's your thinking behind it?")
+
+# Factory function for easy instantiation
+def create_mentor_agent(model: Optional[Model] = None) -> MentorAgent:
+    """
+    Factory function to create a MentorAgent instance
     
     Args:
-        messages: List of message dictionaries with 'role' and 'content'
-        user_id: User identifier for memory context
-        session_id: Session identifier for hint tracking
-    
+        model: Optional PydanticAI model, defaults to OpenAI GPT-4
+        
     Returns:
-        Mentor's response to the latest message
+        Configured MentorAgent instance
     """
-    if not messages:
-        return "Hello! I'm your programming mentor. What would you like to work on today?"
-    
-    # Get the latest user message
-    latest_message = messages[-1]['content']
-    
-    # Create dependencies with session context
-    deps = MentorDependencies.from_settings(
-        mentor_settings,
-        user_id=user_id,
-        session_id=session_id
-    )
-    
-    try:
-        # Track hint escalation based on conversation history
-        escalation_data = await hint_escalation_tracker(
-            type('MockCtx', (), {'deps': deps})(),
-            session_id or "default",
-            detect_confusion_signals(latest_message)
-        )
-        
-        # Update deps with escalation data
-        deps.current_hint_level = escalation_data['current_hint_level']
-        
-        # Run the agent with full conversation context
-        result = await mentor_agent.run(latest_message, deps=deps)
-        
-        # Save the interaction
-        await save_interaction(
-            type('MockCtx', (), {'deps': deps})(),
-            user_id,
-            latest_message,
-            result.data,
-            deps.current_hint_level
-        )
-        
-        return result.data
-        
-    except Exception as e:
-        logger.error(f"Mentor conversation failed: {e}")
-        return "I'm having some technical difficulties, but let's continue. Can you tell me more about what you're trying to accomplish?"
-    finally:
-        await deps.cleanup()
+    return MentorAgent(model=model)
 
-
-def create_mentor_agent_with_deps(user_id: str, **dependency_overrides):
-    """
-    Create mentor agent instance with custom dependencies.
-    
-    Args:
-        user_id: User identifier for memory context
-        **dependency_overrides: Custom dependency values
-    
-    Returns:
-        Tuple of (agent, dependencies)
-    """
-    deps = MentorDependencies.from_settings(
-        mentor_settings, 
-        user_id=user_id, 
-        **dependency_overrides
-    )
-    return mentor_agent, deps
-
-
-# Main execution function for testing
-if __name__ == "__main__":
-    import asyncio
-    
-    async def test_mentor():
-        """Test the mentor agent with a sample question."""
-        response = await run_mentor_agent(
-            "I'm having trouble with React state not updating immediately",
-            user_id="test-user-123"
-        )
-        print(f"Mentor Response: {response}")
-    
-    asyncio.run(test_mentor())
+# Backward compatibility alias
+PydanticMentor = MentorAgent

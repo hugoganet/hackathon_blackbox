@@ -33,12 +33,25 @@ from .database_operations import (
 from .spaced_repetition import SpacedRepetitionEngine, ReviewResult
 from .memory_store import get_memory_store, ConversationMemory
 
+# Import new PydanticAI mentor agent
+try:
+    from agents.mentor_agent import MentorAgent, BlackboxMentorAdapter
+    from .pydantic_handler import handle_pydantic_mentor_request
+    PYDANTIC_AI_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ PydanticAI mentor agent not available: {e}")
+    MentorAgent = None
+    BlackboxMentorAdapter = None
+    handle_pydantic_mentor_request = None
+    PYDANTIC_AI_AVAILABLE = False
+
 # Load environment variables
 load_dotenv()
 
 # Global instances for mentor agents and memory store
 normal_mentor: Optional[BlackboxMentor] = None
 strict_mentor: Optional[BlackboxMentor] = None
+pydantic_mentor: Optional[MentorAgent] = None
 curator_agent: Optional[BlackboxMentor] = None
 memory_store: Optional[ConversationMemory] = None
 spaced_repetition_engine: Optional[SpacedRepetitionEngine] = None
@@ -68,7 +81,7 @@ curator_circuit_breaker = {
 async def lifespan(app: FastAPI):
     """Manage application lifecycle - startup and shutdown"""
     # Startup
-    global normal_mentor, strict_mentor, curator_agent, memory_store, spaced_repetition_engine
+    global normal_mentor, strict_mentor, pydantic_mentor, curator_agent, memory_store, spaced_repetition_engine
     
     # Load environment variables
     load_env_file()
@@ -89,6 +102,20 @@ async def lifespan(app: FastAPI):
         # Initialize all mentor agents
         normal_mentor = BlackboxMentor("../agents/agent-mentor-strict.md")  # Use strict agent for now since no normal agent exists
         strict_mentor = BlackboxMentor("../agents/agent-mentor-strict.md")
+        
+        # Initialize PydanticAI mentor agent if available
+        if PYDANTIC_AI_AVAILABLE:
+            try:
+                pydantic_mentor = MentorAgent()
+                print("✅ PydanticAI mentor agent initialized successfully")
+            except Exception as e:
+                print(f"⚠️ PydanticAI mentor agent initialization failed: {e}")
+                # Fallback to adapter for compatibility
+                pydantic_mentor = BlackboxMentorAdapter("../agents/agent-mentor-strict.md")
+                print("✅ Using BlackboxMentorAdapter as fallback")
+        else:
+            print("⚠️ PydanticAI not available, using legacy mentor only")
+        
         curator_agent = BlackboxMentor("../agents/curator-agent.md")
         print("✅ All mentor agents initialized successfully")
         
@@ -134,7 +161,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     """Request model for chat interactions"""
     message: str
-    agent_type: str = "normal"  # "normal", "strict", or "curator"
+    agent_type: str = "normal"  # "normal", "strict", "pydantic_strict", or "curator"
     user_id: Optional[str] = None
     session_id: Optional[str] = None
 
@@ -144,6 +171,11 @@ class ChatResponse(BaseModel):
     agent_type: str
     session_id: str
     related_memories: Optional[List[str]] = None
+    # Enhanced metadata for PydanticAI agent
+    hint_level: Optional[int] = None
+    detected_language: Optional[str] = None
+    detected_intent: Optional[str] = None
+    similar_interactions_count: Optional[int] = None
 
 class HealthResponse(BaseModel):
     """Health check response"""
@@ -602,6 +634,12 @@ async def chat_with_mentor(
             mentor = strict_mentor
             if not mentor:
                 raise HTTPException(status_code=500, detail="Strict mentor not initialized")
+        elif request.agent_type == "pydantic_strict":
+            if not pydantic_mentor or not handle_pydantic_mentor_request:
+                raise HTTPException(status_code=500, detail="PydanticAI mentor not initialized")
+            # Handle PydanticAI mentor separately (it has a different interface)
+            response_dict = await handle_pydantic_mentor_request(request, db, pydantic_mentor, memory_store)
+            return ChatResponse(**response_dict)
         elif request.agent_type == "curator":
             mentor = curator_agent
             if not mentor:

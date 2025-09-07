@@ -19,6 +19,9 @@ python-dotenv>=1.0.0
 pydantic>=2.5.0
 pydantic-ai>=0.0.14
 
+# PydanticAI for advanced agent functionality
+pydantic-ai>=0.0.14
+
 # Development Dependencies  
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
