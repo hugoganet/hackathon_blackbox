@@ -3,7 +3,7 @@ Database models and configuration for Dev Mentor AI
 Uses PostgreSQL with SQLAlchemy for Railway deployment
 """
 
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Date, UniqueConstraint
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Date, UniqueConstraint, Index, CheckConstraint, func
 from sqlalchemy.orm import sessionmaker, Session, relationship, declarative_base
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime, date
@@ -80,9 +80,11 @@ class Interaction(Base):
     user_message = Column(Text, nullable=False)
     mentor_response = Column(Text, nullable=False)
     
-    # Context for vector store
-    user_intent = Column(String(100), nullable=True)  # Classified intent (e.g., "debugging", "concept_explanation")
-    programming_language = Column(String(50), nullable=True)  # e.g., "javascript", "python"
+    # Context for vector store - proper foreign key relationships
+    intent_id = Column(Integer, ForeignKey("ref_intents.id_intent"), nullable=True)
+    language_id = Column(Integer, ForeignKey("ref_languages.id_language"), nullable=True) 
+    domain_id = Column(Integer, ForeignKey("ref_domains.id_domain"), nullable=True)
+    
     difficulty_level = Column(String(20), nullable=True)  # e.g., "beginner", "intermediate"
     
     # Metadata
@@ -92,8 +94,18 @@ class Interaction(Base):
     # Vector store integration
     embedding_created = Column(Boolean, default=False)  # Track if embedding was created
     
-    # Relationship
+    # Relationships
     conversation = relationship("Conversation", back_populates="interactions")
+    intent = relationship("RefIntent", back_populates="interactions")
+    language = relationship("RefLanguage", back_populates="interactions")
+    domain = relationship("RefDomain")
+    
+    # Table constraints - indexes for performance
+    __table_args__ = (
+        Index('ix_interaction_intent_id', 'intent_id'),
+        Index('ix_interaction_language_id', 'language_id'),
+        Index('ix_interaction_domain_id', 'domain_id'),
+    )
 
 class MemoryEntry(Base):
     """
@@ -134,6 +146,45 @@ class RefDomain(Base):
     
     # Relationship to skills
     skills = relationship("Skill", back_populates="domain")
+
+class RefLanguage(Base):
+    """
+    Reference table for programming languages
+    Used to classify interactions and maintain consistent vocabulary
+    """
+    __tablename__ = "ref_languages"
+    
+    id_language = Column(Integer, primary_key=True)
+    name = Column(String(50), nullable=False, unique=True)
+    category = Column(String(50), nullable=True)  # e.g., "programming", "markup", "query"
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationship to interactions
+    interactions = relationship("Interaction", back_populates="language")
+    
+    # Table constraints - validation for categories
+    __table_args__ = (
+        CheckConstraint(
+            category.in_(['programming', 'markup', 'styling', 'query', 'scripting']),
+            name='valid_language_category'
+        ),
+    )
+
+class RefIntent(Base):
+    """
+    Reference table for interaction intent types
+    Classifies the purpose/type of user interactions
+    """
+    __tablename__ = "ref_intents"
+    
+    id_intent = Column(Integer, primary_key=True)
+    name = Column(String(50), nullable=False, unique=True)
+    description = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationship to interactions
+    interactions = relationship("Interaction", back_populates="intent")
 
 class Skill(Base):
     """
