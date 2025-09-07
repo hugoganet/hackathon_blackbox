@@ -3,9 +3,13 @@ Vector memory store using ChromaDB for conversation memory
 Stores and retrieves similar past interactions for personalized mentoring
 """
 
-import chromadb
-from chromadb.config import Settings
-from sentence_transformers import SentenceTransformer
+try:
+    import chromadb
+    from chromadb.config import Settings
+    from sentence_transformers import SentenceTransformer
+    CHROMADB_AVAILABLE = True
+except ImportError:
+    CHROMADB_AVAILABLE = False
 from typing import List, Dict, Optional, Tuple
 import uuid
 import os
@@ -283,11 +287,14 @@ class ConversationMemory:
 # Global memory store instance
 memory_store: Optional[ConversationMemory] = None
 
-def get_memory_store() -> ConversationMemory:
+def get_memory_store():
     """
     Get or create the global memory store instance
     This ensures we reuse the same ChromaDB connection
     """
+    if not CHROMADB_AVAILABLE:
+        return None
+    
     global memory_store
     if memory_store is None:
         memory_store = ConversationMemory()

@@ -143,21 +143,21 @@ def create_users(db: Session):
     
     users = [
         User(
-            id=uuid.UUID('550e8400-e29b-41d4-a716-446655440001'),
+            id_user=uuid.UUID('550e8400-e29b-41d4-a716-446655440001'),
             username='alex_frontend',
             email='alex@devcompany.com',
             role='developer',
             created_at=datetime(2024, 1, 15, 9, 0, 0)
         ),
         User(
-            id=uuid.UUID('550e8400-e29b-41d4-a716-446655440002'),
+            id_user=uuid.UUID('550e8400-e29b-41d4-a716-446655440002'),
             username='maria_fullstack',
             email='maria@techstartup.io',
             role='developer',
             created_at=datetime(2023, 8, 20, 14, 30, 0)
         ),
         User(
-            id=uuid.UUID('550e8400-e29b-41d4-a716-446655440003'),
+            id_user=uuid.UUID('550e8400-e29b-41d4-a716-446655440003'),
             username='david_backend',
             email='david@enterprise.com',
             role='developer',
@@ -180,9 +180,9 @@ def create_sessions_and_interactions(db: Session, users, domains, languages, int
     intent_list = db.query(RefIntent).all()
     
     # Alex's session (Junior Frontend)
-    alex_session1 = ChatSession(
-        id=uuid.UUID('660e8400-e29b-41d4-a716-446655440001'),
-        user_id=users[0].id,
+    alex_session1 = Session(
+        id_session=uuid.UUID('660e8400-e29b-41d4-a716-446655440001'),
+        id_user=users[0].id_user_user,
         title='Understanding React Hooks',
         agent_type='strict',
         created_at=datetime(2024, 1, 15, 10, 0, 0),
@@ -193,8 +193,8 @@ def create_sessions_and_interactions(db: Session, users, domains, languages, int
     
     # Alex's interactions
     alex_interaction1 = Interaction(
-        id=uuid.UUID('770e8400-e29b-41d4-a716-446655440001'),
-        session_id=alex_session1.id,
+        id_interaction=uuid.UUID('770e8400-e29b-41d4-a716-446655440001'),
+        id_session=alex_session1.id_session,
         user_message='I\'m getting an error "Cannot read property of undefined" when using useState in React. Can you help me fix this?',
         mentor_response='Great question! Before I help you fix it, let me ask - can you show me the exact line where you\'re declaring your useState? What are you trying to store in that state variable?',
         response_time_ms=1250,
@@ -206,9 +206,9 @@ def create_sessions_and_interactions(db: Session, users, domains, languages, int
     db.add(alex_interaction1)
     
     # Maria's session (Full-Stack)
-    maria_session1 = ChatSession(
-        id=uuid.UUID('660e8400-e29b-41d4-a716-446655440004'),
-        user_id=users[1].id,
+    maria_session1 = Session(
+        id_session=uuid.UUID('660e8400-e29b-41d4-a716-446655440004'),
+        id_user=users[1].id_user_user,
         title='API Design Best Practices',
         agent_type='normal',
         created_at=datetime(2024, 1, 10, 16, 0, 0),
@@ -219,8 +219,8 @@ def create_sessions_and_interactions(db: Session, users, domains, languages, int
     
     # Maria's interaction
     maria_interaction1 = Interaction(
-        id=uuid.UUID('770e8400-e29b-41d4-a716-446655440004'),
-        session_id=maria_session1.id,
+        id_interaction=uuid.UUID('770e8400-e29b-41d4-a716-446655440004'),
+        id_session=maria_session1.id_session,
         user_message='What\'s the best way to structure REST API endpoints for a blog application with posts, comments, and users?',
         mentor_response='For a blog API, you\'ll want to follow RESTful conventions. Consider these endpoints: GET /posts, POST /posts, GET /posts/:id, GET /posts/:id/comments, POST /posts/:id/comments.',
         response_time_ms=1450,
@@ -232,9 +232,9 @@ def create_sessions_and_interactions(db: Session, users, domains, languages, int
     db.add(maria_interaction1)
     
     # David's session (Senior Backend)
-    david_session1 = ChatSession(
-        id=uuid.UUID('660e8400-e29b-41d4-a716-446655440007'),
-        user_id=users[2].id,
+    david_session1 = Session(
+        id_session=uuid.UUID('660e8400-e29b-41d4-a716-446655440007'),
+        id_user=users[2].id_user,
         title='Microservices Architecture',
         agent_type='normal',
         created_at=datetime(2024, 1, 8, 10, 30, 0),
@@ -255,13 +255,13 @@ def create_skill_history(db: Session, users, skills):
     skill_history = [
         # Alex's progression (Junior - React focus)
         SkillHistory(
-            id_user=users[0].id,
+            id_user=users[0].id_user,
             id_skill=skills[10].id_skill,  # React Hooks
             mastery_level=1,
             snapshot_date=date(2024, 1, 15)
         ),
         SkillHistory(
-            id_user=users[0].id,
+            id_user=users[0].id_user,
             id_skill=skills[10].id_skill,  # React Hooks
             mastery_level=2,
             snapshot_date=date(2024, 1, 20)
@@ -269,13 +269,13 @@ def create_skill_history(db: Session, users, skills):
         
         # Maria's progression (Full-Stack)
         SkillHistory(
-            id_user=users[1].id,
+            id_user=users[1].id_user,
             id_skill=skills[6].id_skill,  # MVC Pattern
             mastery_level=3,
             snapshot_date=date(2024, 1, 10)
         ),
         SkillHistory(
-            id_user=users[1].id,
+            id_user=users[1].id_user,
             id_skill=skills[6].id_skill,  # MVC Pattern
             mastery_level=4,
             snapshot_date=date(2024, 1, 25)
@@ -307,15 +307,15 @@ def create_flashcards_and_reviews(db: Session, users, interactions, skills):
         card_type='concept',
         next_review_date=date(2024, 2, 6),
         review_count=0,
-        interaction_id=interactions[0].id,
-        skill_id=skills[10].id_skill  # React Hooks
+        id_interaction=interactions[0].id,
+        id_skill=skills[10].id_skill  # React Hooks
     )
     db.add(flashcard1)
     
     # Review session for Alex
     review1 = ReviewSession(
-        user_id=users[0].id,
-        flashcard_id=flashcard1.id,
+        id_user=users[0].id_user,
+        id_flashcard=flashcard1.id,
         success_score=2,
         response_time=45,
         review_date=datetime(2024, 1, 16, 9, 30, 0)
