@@ -14,19 +14,19 @@ import shutil
 import os
 
 # Import application components
-from api import app, curator_agent
-from database import Base, get_db
-from memory_store import ConversationMemory
-from main import BlackboxMentor
-import api
+from backend.api import app, curator_agent
+from backend.database import Base, get_db
+from backend.memory_store import ConversationMemory
+from backend.main import BlackboxMentor
+import backend.api as api
 
 # Import test utilities
 from tests.helpers.curator_test_utils import CuratorTestHelper, AssertionHelper
 from tests.fixtures.curator_conversations import MOCK_CURATOR_RESPONSES
 
-# Test database setup
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test_curator_integration.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+# Test database setup - PostgreSQL only
+SQLALCHEMY_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "postgresql://localhost:5432/test_curator_integration")
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def override_get_db():
@@ -50,15 +50,13 @@ def setup_test_db():
     yield
     # Cleanup
     Base.metadata.drop_all(bind=engine)
-    if os.path.exists("test_curator_integration.db"):
-        os.remove("test_curator_integration.db")
 
 @pytest.fixture(scope="session")
 def setup_curator_agent():
     """Initialize curator agent for testing"""
     try:
         # Initialize curator agent
-        api.curator_agent = BlackboxMentor("curator-agent.md")
+        api.curator_agent = BlackboxMentor("agents/curator-agent.md")
         yield api.curator_agent
     except Exception as e:
         pytest.skip(f"Could not initialize curator agent: {e}")
@@ -73,7 +71,7 @@ class TestCuratorAgentInitialization:
         """Test curator agent loads system prompt from curator-agent.md"""
         
         try:
-            curator = BlackboxMentor("curator-agent.md")
+            curator = BlackboxMentor("agents/curator-agent.md")
             assert curator.system_prompt is not None
             assert len(curator.system_prompt) > 0
             assert "curator agent" in curator.system_prompt.lower()
@@ -85,7 +83,7 @@ class TestCuratorAgentInitialization:
     def test_curator_prompt_contains_required_elements(self):
         """Test curator prompt contains all required analysis elements"""
         
-        curator = BlackboxMentor("curator-agent.md")
+        curator = BlackboxMentor("agents/curator-agent.md")
         prompt = curator.system_prompt.lower()
         
         required_elements = [
@@ -262,7 +260,8 @@ class TestCuratorSkillsEndpoint:
         data = response.json()
         if response.status_code == 200:
             assert "user_id" in data
-            assert "skills" in data
+            assert "skill_progression" in data
+            assert "skills_summary" in data
             assert data["user_id"] == "test_skills_user"
         else:
             # If database not fully set up, should get proper error structure
@@ -302,7 +301,7 @@ class TestCuratorErrorHandling:
         """Test handling of Blackbox API errors"""
         
         # Mock API error response
-        with patch('main.requests.post') as mock_post:
+        with patch('backend.main.requests.post') as mock_post:
             mock_response = MagicMock()
             mock_response.json.return_value = {"response": "❌ API Error"}
             mock_post.return_value = mock_response
@@ -360,7 +359,7 @@ class TestCuratorConfigurationValidation:
     def test_curator_prompt_file_content_validation(self):
         """Test curator prompt file content is valid"""
         
-        curator = BlackboxMentor("curator-agent.md")
+        curator = BlackboxMentor("agents/curator-agent.md")
         
         # Prompt should contain key curator-specific terms
         prompt = curator.system_prompt.lower()
