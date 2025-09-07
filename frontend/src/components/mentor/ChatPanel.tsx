@@ -75,6 +75,18 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ code: _code }) => {
           disabled={loading.isLoading}
           placeholder="Ask me anything about your code..."
         />
+        
+        {/* Footer */}
+        <div className="text-center mt-2">
+          <a 
+            href="https://www.blackbox.ai/" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-xs text-gray-500 hover:text-gray-700"
+          >
+            Powered by BLACKBOX.AI
+          </a>
+        </div>
       </div>
     </div>
   );
