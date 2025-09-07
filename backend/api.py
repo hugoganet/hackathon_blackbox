@@ -4,6 +4,10 @@ FastAPI Backend for Dev Mentor AI
 Main API application following Option 1 architecture
 """
 
+import os
+print(f"🔍 DEBUG: DATABASE_URL at startup = {os.getenv('DATABASE_URL')}")
+print(f"🔍 DEBUG: All env vars = {list(os.environ.keys())}")
+
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
