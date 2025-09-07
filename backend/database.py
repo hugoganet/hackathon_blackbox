@@ -178,6 +178,46 @@ class SkillHistory(Base):
         UniqueConstraint('id_user', 'id_skill', 'snapshot_date', name='skill_history_unique_daily'),
     )
 
+class Flashcard(Base):
+    """
+    Flashcard model - spaced repetition learning cards generated from interactions
+    """
+    __tablename__ = "flashcards"
+    
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4, name='id_flashcard')
+    question = Column(Text, nullable=False)
+    answer = Column(Text, nullable=False)
+    difficulty = Column(Integer, nullable=False, default=1)  # 1-5 scale
+    card_type = Column(String(50), nullable=False, default='concept')
+    created_at = Column(DateTime, default=datetime.utcnow)
+    next_review_date = Column(Date, nullable=False, default=date.today)
+    review_count = Column(Integer, nullable=False, default=0)
+    
+    # Foreign keys
+    interaction_id = Column(UUIDType, ForeignKey("interactions.id"), nullable=True)
+    skill_id = Column(Integer, ForeignKey("skills.id_skill"), nullable=True)
+    
+    # Relationships
+    interaction = relationship("Interaction", backref="flashcards")
+    skill = relationship("Skill", backref="flashcards")
+
+class ReviewSession(Base):
+    """
+    Review Session model - tracks flashcard review performance for spaced repetition
+    """
+    __tablename__ = "review_sessions"
+    
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4, name='id_review')
+    user_id = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
+    flashcard_id = Column(UUIDType, ForeignKey("flashcards.id_flashcard"), nullable=False)
+    success_score = Column(Integer, nullable=False)  # 0-5 scale
+    response_time = Column(Integer, nullable=True)  # seconds
+    review_date = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", backref="review_sessions")
+    flashcard = relationship("Flashcard", backref="review_sessions")
+
 # Database utility functions
 
 def get_db() -> Generator[Session, None, None]:

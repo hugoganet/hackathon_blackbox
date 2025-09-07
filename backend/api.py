@@ -14,6 +14,8 @@ import os
 from dotenv import load_dotenv
 import time
 import asyncio
+from datetime import date, timedelta
+import uuid
 from sqlalchemy.orm import Session
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from functools import lru_cache
@@ -21,10 +23,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 # Import our components
 from .main import BlackboxMentor, load_env_file
-from .database import (
+from .database_operations import (
     get_db, create_tables, get_user_by_username, create_conversation, save_interaction,
-    process_curator_analysis, get_user_skill_progression, populate_initial_data
+    process_curator_analysis, get_user_skill_progression, populate_initial_data,
+    create_flashcard, get_due_flashcards, get_flashcard_by_id, update_flashcard_schedule,
+    create_review_session, get_user_review_history, get_user_flashcard_stats,
+    get_flashcards_by_skill, batch_create_flashcards, delete_flashcard
 )
+from .spaced_repetition import SpacedRepetitionEngine, ReviewResult
 from .memory_store import get_memory_store, ConversationMemory
 
 # Load environment variables
@@ -684,7 +690,7 @@ async def get_system_stats(db: Session = Depends(get_db)):
     """
     try:
         # Database stats
-        from database import User, Conversation, Interaction
+        from .database import User, Conversation, Interaction
         
         user_count = db.query(User).count()
         conversation_count = db.query(Conversation).count() 
