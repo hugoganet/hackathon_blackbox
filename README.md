@@ -1,194 +1,116 @@
-# Dev Mentor AI
+**# 🧠 Socrate - AI Mentor for Junior Developers**
 
-AI-powered mentoring system for junior developers with an intuitive chat interface. Features dual AI agents (normal and strict mentoring modes) with conversation memory and learning pattern analysis.
+> ****An AI mentoring system that guides junior developers towards autonomy using the Socratic method****
 
-## 🚀 Quick Start
+Socrate is an AI-powered mentoring platform designed to accelerate junior developer growth while giving managers full visibility and control over team progress. Leveraging advanced Socratic pedagogy, Socrate guides juniors through interactive questions and hints instead of providing direct answers, promoting autonomous learning and faster skill acquisition. Meanwhile, managers gain access to a centralized dashboard with real-time analytics, allowing them to track progress, identify skill gaps, and optimize integration and mentoring efforts, all while saving time and reducing repetitive supervision tasks.
 
-### Fastest Setup (Development)
+**## ✨ Key Features**
+
+- ***🤖 Socratic AI Mentor****: Interactive chat with guided discovery learning
+- ***📊 Learning Analytics****: Progress tracking and performance insights for managers
+- ***🎯 Adaptive Flashcards****: Spaced repetition system for knowledge retention
+- ***💻 IDE Interface****: Monaco Editor integration for code practice
+- ***🧠 Memory System****: ChromaDB-powered conversation memory
+
+**## 🚀 Quick Setup**
+
+**### Prerequisites**
+
+- ***Node.js 18+**** and ***npm****
+- ***Python 3.11+**** and ***pip****
+- ***Blackbox API Key**** ([Get one here](https://blackbox.ai/api))
+
+**### Installation**
 
 ```bash
-# 1. Clone and setup
-git clone <your-repo>
-cd dev_mentor_ai
 
-# 2. Configure environment
+# Clone the repository
+
+git clone https://github.com/yourusername/socrate-mentor-ia.git
+
+cd socrate-mentor-ia
+
+# Environment setup
+
 cp .env.example .env
+
 # Edit .env and add your BLACKBOX_API_KEY
 
-# 3. Start everything (backend + frontend)
-./start-dev.sh
-```
+# Install dependencies
 
-Open http://localhost:3000 and start chatting with your AI mentor!
-
-## ✨ Features
-
-- **🤖 Dual Agent System**: Choose between comprehensive answers or guided discovery learning
-- **💬 Modern Chat Interface**: Clean, responsive React UI with real-time messaging
-- **🧠 Conversation Memory**: Vector-based memory system that remembers past interactions
-- **📊 Learning Analytics**: Track progress and identify knowledge patterns
-- **🎨 Beautiful Design**: Follows comprehensive UI/UX guidelines
-- **♿ Accessible**: WCAG AA compliant with keyboard navigation
-- **📱 Responsive**: Works seamlessly on desktop, tablet, and mobile
-
-## 🏗️ Architecture
-
-### Frontend (React + TypeScript)
-- Modern React 18 with hooks
-- TypeScript for type safety
-- Tailwind CSS following design system
-- Vite for fast development
-- Fully responsive and accessible
-
-### Backend (FastAPI + PostgreSQL)
-- FastAPI for high-performance REST API
-- PostgreSQL for data persistence
-- ChromaDB for vector similarity search
-- Blackbox AI integration (Claude Sonnet 4)
-- SQLAlchemy ORM with async support
-
-## 📦 Installation
-
-### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- Blackbox AI API key ([get one here](https://blackbox.ai/api))
-
-### Backend Setup
-
-```bash
-# Install Python dependencies
 pip install -r requirements.txt
 
-# Set up environment
-cp .env.example .env
-# Add your BLACKBOX_API_KEY to .env
+cd frontend && npm install && cd ..
 
-# Run the backend
-python3 api.py
-```
+# Start the application
 
-Backend runs on http://localhost:8000
-API docs available at http://localhost:8000/docs
-
-### Frontend Setup
-
-```bash
-# Navigate to frontend
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-```
-
-Frontend runs on http://localhost:3000
-
-## 🎯 Usage
-
-### Choose Your Mentor
-
-1. **Normal Mentor Agent**: Provides complete answers with detailed explanations and code examples. Perfect when you need comprehensive guidance quickly.
-
-2. **Strict Mentor Agent**: Never gives direct answers! Guides you through Socratic questioning and progressive hints. Ideal for deep learning and building problem-solving skills.
-
-### API Endpoints
-
-- `POST /chat` - Send messages to mentor agents
-- `GET /agents` - List available mentor types
-- `GET /health` - System health check
-- `GET /stats` - Usage statistics
-- `GET /user/{user_id}/memories` - User's learning patterns
-
-### Example Chat Request
-
-```json
-{
-  "message": "How do I handle errors in React?",
-  "agent_type": "strict",
-  "user_id": "developer123"
-}
-```
-
-## 🚢 Production Deployment
-
-### Railway (Recommended)
-
-```bash
-# Push to GitHub
-git add .
-git commit -m "Deploy to Railway"
-git push origin main
-
-# Connect GitHub repo on railway.app
-# Add environment variable: BLACKBOX_API_KEY
-# Deploy automatically via Procfile
-```
-
-### Frontend on Vercel
-
-```bash
-cd frontend
-npm run build
-# Deploy dist folder to Vercel
-```
-
-## 📁 Project Structure
+./start-dev.sh
 
 ```
-dev_mentor_ai/
-├── frontend/                  # React frontend application
-│   ├── src/
-│   │   ├── components/       # React components
-│   │   ├── hooks/           # Custom React hooks
-│   │   ├── services/        # API integration
-│   │   └── types/           # TypeScript types
+
+- ***🌐 Access the application:****
+- ***Main App****: http://localhost:3000
+
+**## 🎮 Usage**
+
+**### **Socratic Chat****
+
+1. Navigate to http://localhost:3000 → "IDE" tab
+
+2. Ask programming questions in the chat panel
+
+**### **Manager Dashboard****
+
+- Switch to "Manager" view in the top navigation
+- Track team progress, skills acquired, and learning analytics
+- Filter and search through junior developers' metrics
+
+**### **Flashcards****
+
+- Access via "Revises" tab
+- Auto-generated cards based on your conversations
+- Adaptive difficulty with spaced repetition algorithm
+
+**### **Landing Page****
+
+Run `./open-landing-page.sh` to automatically open the landing page and see the product value
+
+**## 🏗️ Project Structure**
+
+```
+
+socrate-mentor-ia/
+
+├── frontend/                    # React + TypeScript UI
+
+│   ├── src/components/         # UI components
+
 │   └── package.json
-├── api.py                    # FastAPI backend server
-├── main.py                   # Core Blackbox integration
-├── database.py               # PostgreSQL models
-├── memory_store.py           # ChromaDB vector store
-├── agent-mentor.md           # Normal agent prompt
-├── agent-mentor-strict.md    # Strict agent prompt
-├── start-dev.sh             # Development start script
+
+├── backend/                    # FastAPI Python server
+
+│   ├── api.py                 # Main API server
+
+│   ├── main.py                # Blackbox AI integration
+
+│   └── database_operations.py # Database layer
+
+├── landing_page/              # Static landing page
+
+│   ├── index.html            # Main landing page
+
+│   ├── styles.css            # Styling
+
+│   └── script.js             # Interactive features
+
+├── agents/                    # AI prompts and configurations
+
+├── tests/                     # Test suite
+
+├── start-dev.sh              # Development startup script
+
+├── open-landing-page.sh      # Landing page opener script
+
 └── requirements.txt          # Python dependencies
+
 ```
-
-## 🎨 Design System
-
-The frontend follows comprehensive UI guidelines with:
-- **Typography**: Inter (primary) and JetBrains Mono (code)
-- **Colors**: Primary blue (#0066FF), semantic colors for states
-- **Spacing**: 8px grid system
-- **Components**: Consistent elevation, border radius, and interactions
-- **Accessibility**: WCAG AA compliance, keyboard navigation
-
-## 🧪 Testing
-
-```bash
-# Backend tests
-pytest tests/ -v
-
-# Frontend tests (coming soon)
-cd frontend && npm test
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Follow the coding standards (PEP 8 for Python, ESLint for TypeScript)
-4. Ensure all tests pass
-5. Submit a pull request
-
-## 📝 License
-
-See LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- Powered by Blackbox AI and Claude Sonnet 4
-- Built with FastAPI, React, and modern web technologies
-- Designed following industry-standard UI/UX principles
