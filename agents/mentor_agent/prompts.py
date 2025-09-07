@@ -4,6 +4,13 @@ System prompts and message templates for the strict mentor agent
 """
 
 from typing import List, Dict, Optional
+from pydantic_ai import RunContext
+
+# Import the agent dependencies - we need to do this after the class is defined
+# So we'll use TYPE_CHECKING to avoid circular imports
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .agent import MentorAgentDeps
 
 # Main system prompt for the strict mentor agent
 STRICT_MENTOR_SYSTEM_PROMPT = """
@@ -187,6 +194,8 @@ def get_progress_celebration() -> str:
     import random
     return random.choice(PROGRESS_CELEBRATION_TEMPLATES)
 
+# This text should be part of a constant
+ENHANCED_MENTOR_SYSTEM_PROMPT = """
 Core Teaching Philosophy:
 1. Ask leading questions that help students think through problems
 2. Reference their past similar issues to reinforce learning patterns
@@ -217,8 +226,11 @@ You have access to tools for memory search, interaction saving, learning pattern
 """
 
 # Dynamic Prompt Templates
+# NOTE: These async functions should be moved to agent.py or tools.py where RunContext is available
+# Commenting out to fix import errors
 
-async def recent_repeat_context(ctx: RunContext[MentorDependencies]) -> str:
+# Dynamic context functions for memory-guided mentoring
+async def recent_repeat_context(ctx: RunContext['MentorAgentDeps']) -> str:
     """Dynamic prompt when user repeats a recent question."""
     if hasattr(ctx.deps, 'learning_classification') and ctx.deps.learning_classification == "recent_repeat":
         return f"""
@@ -235,7 +247,7 @@ Remember: Even with this context, maintain Socratic method - no direct answers.
     return ""
 
 
-async def pattern_recognition_context(ctx: RunContext[MentorDependencies]) -> str:
+async def pattern_recognition_context(ctx: RunContext['MentorAgentDeps']) -> str:
     """Dynamic prompt when user shows recurring learning patterns."""
     if hasattr(ctx.deps, 'learning_classification') and ctx.deps.learning_classification == "pattern_recognition":
         similar_issues = getattr(ctx.deps, 'past_similar_issues', [])
@@ -257,7 +269,7 @@ Use these strategically in your questions, but maintain discovery-based learning
     return ""
 
 
-async def skill_building_context(ctx: RunContext[MentorDependencies]) -> str:
+async def skill_building_context(ctx: RunContext['MentorAgentDeps']) -> str:
     """Dynamic prompt for progressive skill development."""
     if hasattr(ctx.deps, 'learning_classification') and ctx.deps.learning_classification == "skill_building":
         topic_area = getattr(ctx.deps, 'topic_area', 'programming')
@@ -281,7 +293,6 @@ Foundation they've built:
 Frame questions to help them extend their existing knowledge foundation.
 """
     return ""
-
 
 # Progressive Hint Escalation Prompts
 
@@ -447,4 +458,4 @@ Quality indicators to track:
 - Successful question patterns (what worked for this user)
 - Learning breakthroughs (moments of understanding)
 - Effective memory references (which past issues helped)
-
+"""

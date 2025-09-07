@@ -5,8 +5,15 @@ Memory-guided mentoring tools for the strict mentor agent
 
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
+from pydantic_ai import RunContext
 import json
+import logging
 from datetime import datetime, timedelta
+
+# Import MentorAgentDeps with TYPE_CHECKING to avoid circular imports
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .agent import MentorAgentDeps
 
 class SimilarInteraction(BaseModel):
     """Model for similar past interactions"""
@@ -404,7 +411,7 @@ def detect_confusion_signals(text: str) -> List[str]:
 
 
 async def memory_search(
-    ctx: RunContext[MentorDependencies],
+    ctx: RunContext['MentorAgentDeps'],
     query: str,
     user_id: str,
     limit: int = 3
@@ -456,7 +463,7 @@ async def memory_search(
 
 
 async def save_interaction(
-    ctx: RunContext[MentorDependencies],
+    ctx: RunContext['MentorAgentDeps'],
     user_id: str,
     user_message: str,
     mentor_response: str,
@@ -579,7 +586,7 @@ def analyze_learning_pattern(
 
 
 async def hint_escalation_tracker(
-    ctx: RunContext[MentorDependencies],
+    ctx: RunContext['MentorAgentDeps'],
     session_id: str,
     user_confusion_signals: Optional[List[str]] = None
 ) -> Dict[str, Any]:
