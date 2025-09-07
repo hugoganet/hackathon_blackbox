@@ -7,7 +7,7 @@ import time
 from typing import Optional
 from sqlalchemy.orm import Session
 
-from .database import get_user_by_username, create_conversation, save_interaction
+from database_operations import get_user_by_username, create_conversation, save_interaction
 
 
 async def handle_pydantic_mentor_request(request, db: Session, pydantic_mentor, memory_store) -> dict:

@@ -11,7 +11,7 @@ import uuid
 import json
 
 # Import all models from the main database module
-from .database import (
+from database.models import (
     SessionLocal, Base, create_engine, engine,
     User, Conversation, Interaction, MemoryEntry, Skill, SkillHistory, RefDomain,
     RefLanguage, RefIntent, Flashcard, ReviewSession
@@ -118,7 +118,7 @@ def create_or_update_skill(db: Session, skill_name: str, description: str = None
     skill = Skill(
         name=skill_name,
         description=description or f"Auto-created skill: {skill_name}",
-        id_domain=domain.id_domain
+        domain_id=domain.id
     )
     db.add(skill)
     db.commit()
@@ -141,8 +141,8 @@ def update_skill_history(db: Session, user_id: str, skill_name: str, confidence:
     # Check for existing skill history today
     today = date.today()
     existing_history = db.query(SkillHistory).filter(
-        SkillHistory.id_user == user_uuid,
-        SkillHistory.id_skill == skill.id_skill,
+        SkillHistory.user_id == user_uuid,
+        SkillHistory.skill_id == skill.id_skill,
         SkillHistory.snapshot_date == today
     ).first()
     
@@ -156,9 +156,9 @@ def update_skill_history(db: Session, user_id: str, skill_name: str, confidence:
     else:
         # Create new skill history entry
         skill_history = SkillHistory(
-            id_history=uuid.uuid4(),
-            id_user=user_uuid,
-            id_skill=skill.id_skill,
+            id=uuid.uuid4(),
+            user_id=user_uuid,
+            skill_id=skill.id,
             mastery_level=mastery_level,
             snapshot_date=today
         )
@@ -176,11 +176,11 @@ def get_user_skill_progression(db: Session, user_id: str, limit: int = 20) -> Li
     
     # Query skill history with skill names
     skill_histories = db.query(SkillHistory, Skill.name, RefDomain.name.label("domain_name")).join(
-        Skill, SkillHistory.id_skill == Skill.id_skill
+        Skill, SkillHistory.skill_id == Skill.id
     ).join(
-        RefDomain, Skill.id_domain == RefDomain.id_domain
+        RefDomain, Skill.domain_id == RefDomain.id
     ).filter(
-        SkillHistory.id_user == user_uuid
+        SkillHistory.user_id == user_uuid
     ).order_by(
         SkillHistory.snapshot_date.desc()
     ).limit(limit).all()

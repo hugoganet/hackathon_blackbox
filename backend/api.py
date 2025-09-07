@@ -22,21 +22,21 @@ from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
 
 # Import our components
-from .main import BlackboxMentor, load_env_file
-from .database_operations import (
+from main import BlackboxMentor, load_env_file
+from database_operations import (
     get_db, create_tables, get_user_by_username, create_conversation, save_interaction,
     process_curator_analysis, get_user_skill_progression, populate_initial_data,
     create_flashcard, get_due_flashcards, get_flashcard_by_id, update_flashcard_schedule,
     create_review_session, get_user_review_history, get_user_flashcard_stats,
     get_flashcards_by_skill, batch_create_flashcards, delete_flashcard
 )
-from .spaced_repetition import SpacedRepetitionEngine, ReviewResult
-from .memory_store import get_memory_store, ConversationMemory
+from spaced_repetition import SpacedRepetitionEngine, ReviewResult
+from memory_store import get_memory_store, ConversationMemory
 
 # Import new PydanticAI mentor agent
 try:
     from agents.mentor_agent import MentorAgent, BlackboxMentorAdapter
-    from .pydantic_handler import handle_pydantic_mentor_request
+    from pydantic_handler import handle_pydantic_mentor_request
     PYDANTIC_AI_AVAILABLE = True
 except ImportError as e:
     print(f"⚠️ PydanticAI mentor agent not available: {e}")
@@ -46,7 +46,7 @@ except ImportError as e:
     PYDANTIC_AI_AVAILABLE = False
 
 # Load environment variables
-load_dotenv()
+load_dotenv("../.env")
 
 # Global instances for mentor agents and memory store
 normal_mentor: Optional[BlackboxMentor] = None
@@ -92,7 +92,7 @@ async def lifespan(app: FastAPI):
         print("✅ Database tables initialized")
         
         # Populate initial skill data
-        from .database_operations import SessionLocal
+        from database_operations import SessionLocal
         db = SessionLocal()
         try:
             populate_initial_data(db)
@@ -436,7 +436,7 @@ async def update_interaction_metadata(db: Session, interaction_id: str, analysis
     Update interaction record with curator-extracted metadata
     """
     try:
-        from .database import Interaction
+        from database.models import Interaction
         
         # Extract metadata from analysis
         skills = analysis.get("skills", [])
@@ -574,7 +574,7 @@ MENTOR RESPONSE:
             return None
         
         # Create new database session for background task
-        from .database import SessionLocal, process_curator_analysis
+        from database.models import SessionLocal, process_curator_analysis
         db = SessionLocal()
         
         try:
@@ -799,7 +799,7 @@ async def get_system_stats(db: Session = Depends(get_db)):
     """
     try:
         # Database stats
-        from .database import User, Conversation, Interaction
+        from database.models import User, Conversation, Interaction
         
         user_count = db.query(User).count()
         conversation_count = db.query(Conversation).count() 
@@ -1217,7 +1217,7 @@ async def get_user_conversations_with_analysis(
     Provides detailed learning analytics for each conversation
     """
     try:
-        from .database import User, Interaction, Conversation
+        from database.models import User, Interaction, Conversation
         from sqlalchemy import desc
         
         # Get user
@@ -1279,7 +1279,7 @@ async def get_curator_stats(db: Session = Depends(get_db)):
     Shows how many interactions have been analyzed and skill tracking effectiveness
     """
     try:
-        from .database import Interaction, SkillHistory
+        from database.models import Interaction, SkillHistory
         
         # Count total interactions
         total_interactions = db.query(Interaction).count()

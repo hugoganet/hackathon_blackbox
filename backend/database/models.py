@@ -37,10 +37,13 @@ class User(Base):
     """
     __tablename__ = "users"
     
-    id = Column(UUIDType, primary_key=True, default=uuid.uuid4, name='id_user')
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
     username = Column(String(50), unique=True, nullable=False)
     email = Column(String(255), unique=True, nullable=True)
+    password_hash = Column(String(255), nullable=True)
+    role = Column(String(20), nullable=False, default='developer')
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_active = Column(Boolean, default=True)
     
     # Relationships
@@ -54,7 +57,7 @@ class Conversation(Base):
     __tablename__ = "conversations"
     
     id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
+    user_id = Column(UUIDType, ForeignKey("users.id"), nullable=False)
     session_id = Column(String(255), nullable=False, index=True)
     agent_type = Column(String(20), nullable=False)  # "normal" or "strict"
     title = Column(String(255), nullable=True)  # Optional conversation title
@@ -81,9 +84,9 @@ class Interaction(Base):
     mentor_response = Column(Text, nullable=False)
     
     # Context for vector store - proper foreign key relationships
-    intent_id = Column(Integer, ForeignKey("ref_intents.id_intent"), nullable=True)
-    language_id = Column(Integer, ForeignKey("ref_languages.id_language"), nullable=True) 
-    domain_id = Column(Integer, ForeignKey("ref_domains.id_domain"), nullable=True)
+    intent_id = Column(Integer, ForeignKey("ref_intents.id"), nullable=True)
+    language_id = Column(Integer, ForeignKey("ref_languages.id"), nullable=True) 
+    domain_id = Column(Integer, ForeignKey("ref_domains.id"), nullable=True)
     
     difficulty_level = Column(String(20), nullable=True)  # e.g., "beginner", "intermediate"
     
@@ -115,7 +118,7 @@ class MemoryEntry(Base):
     __tablename__ = "memory_entries"
     
     id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
+    user_id = Column(UUIDType, ForeignKey("users.id"), nullable=False)
     
     # Learning insights
     concept = Column(String(100), nullable=False)  # e.g., "react_hooks", "async_await"
@@ -137,7 +140,7 @@ class RefDomain(Base):
     """
     __tablename__ = "ref_domains"
     
-    id_domain = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True)
     name = Column(String(50), nullable=False, unique=True)
     description = Column(Text)
     display_order = Column(Integer, default=0)
@@ -154,7 +157,7 @@ class RefLanguage(Base):
     """
     __tablename__ = "ref_languages"
     
-    id_language = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True)
     name = Column(String(50), nullable=False, unique=True)
     category = Column(String(50), nullable=True)  # e.g., "programming", "markup", "query"
     is_active = Column(Boolean, default=True)
@@ -178,7 +181,7 @@ class RefIntent(Base):
     """
     __tablename__ = "ref_intents"
     
-    id_intent = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True)
     name = Column(String(50), nullable=False, unique=True)
     description = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -192,10 +195,10 @@ class Skill(Base):
     """
     __tablename__ = "skills"
     
-    id_skill = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False, unique=True)
     description = Column(Text)
-    id_domain = Column(Integer, ForeignKey("ref_domains.id_domain"), nullable=False)
+    domain_id = Column(Integer, ForeignKey("ref_domains.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
@@ -209,9 +212,9 @@ class SkillHistory(Base):
     """
     __tablename__ = "skill_history"
     
-    id_history = Column(UUIDType, primary_key=True, default=uuid.uuid4)
-    id_user = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
-    id_skill = Column(Integer, ForeignKey("skills.id_skill"), nullable=False)
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUIDType, ForeignKey("users.id"), nullable=False)
+    skill_id = Column(Integer, ForeignKey("skills.id"), nullable=False)
     mastery_level = Column(Integer, nullable=False, default=1)
     snapshot_date = Column(Date, nullable=False, default=date.today)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -222,7 +225,7 @@ class SkillHistory(Base):
     
     # Table constraints
     __table_args__ = (
-        UniqueConstraint('id_user', 'id_skill', 'snapshot_date', name='skill_history_unique_daily'),
+        UniqueConstraint('user_id', 'skill_id', 'snapshot_date', name='skill_history_unique_daily'),
     )
 
 class Flashcard(Base):
@@ -242,7 +245,7 @@ class Flashcard(Base):
     
     # Foreign keys
     interaction_id = Column(UUIDType, ForeignKey("interactions.id"), nullable=True)
-    skill_id = Column(Integer, ForeignKey("skills.id_skill"), nullable=True)
+    skill_id = Column(Integer, ForeignKey("skills.id"), nullable=True)
     
     # Relationships
     interaction = relationship("Interaction", backref="flashcards")
@@ -255,7 +258,7 @@ class ReviewSession(Base):
     __tablename__ = "review_sessions"
     
     id = Column(UUIDType, primary_key=True, default=uuid.uuid4, name='id_review')
-    user_id = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
+    user_id = Column(UUIDType, ForeignKey("users.id"), nullable=False)
     flashcard_id = Column(UUIDType, ForeignKey("flashcards.id_flashcard"), nullable=False)
     success_score = Column(Integer, nullable=False)  # 0-5 scale
     response_time = Column(Integer, nullable=True)  # seconds
