@@ -12,10 +12,18 @@ import os
 
 # Database configuration - PostgreSQL only
 # Railway automatically provides DATABASE_URL environment variable
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost:5432/dev_mentor_ai")
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    # Only use localhost for local development
+    DATABASE_URL = "postgresql://localhost:5432/dev_mentor_ai"
+    print(f"⚠️ No DATABASE_URL found, using local default: {DATABASE_URL}")
+
+# Railway uses postgres:// but SQLAlchemy needs postgresql://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # Ensure we're using PostgreSQL
-if not DATABASE_URL.startswith(("postgresql://", "postgres://")):
+if not DATABASE_URL.startswith("postgresql://"):
     raise ValueError("DATABASE_URL must be a PostgreSQL connection string")
 
 # SQLAlchemy setup - PostgreSQL only
