@@ -17,9 +17,9 @@ from backend.api import app
 from backend.database import Base, get_db
 from backend.memory_store import ConversationMemory
 
-# Create test database
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+# Create test database - PostgreSQL only
+SQLALCHEMY_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "postgresql://localhost:5432/test_dev_mentor")
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def override_get_db():
@@ -43,8 +43,6 @@ def setup_test_db():
     yield
     # Cleanup
     Base.metadata.drop_all(bind=engine)
-    if os.path.exists("test.db"):
-        os.remove("test.db")
 
 @pytest.fixture(scope="session")
 def setup_test_memory():
@@ -78,12 +76,13 @@ class TestHealthEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert "agents" in data
-        assert len(data["agents"]) == 2
+        assert len(data["agents"]) == 3
         
         # Check agent structures
         agent_ids = [agent["id"] for agent in data["agents"]]
         assert "normal" in agent_ids
         assert "strict" in agent_ids
+        assert "curator" in agent_ids
 
 class TestChatEndpoint:
     """Test main chat functionality"""

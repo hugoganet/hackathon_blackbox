@@ -3,45 +3,37 @@ Database models and configuration for Dev Mentor AI
 Uses PostgreSQL with SQLAlchemy for Railway deployment
 """
 
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Date, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from datetime import datetime, date
 import uuid
 import os
-from typing import Generator
+from typing import Generator, List, Optional
 
-# Database configuration
+# Database configuration - PostgreSQL only
 # Railway automatically provides DATABASE_URL environment variable
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dev_mentor.db")  # Fallback to SQLite for local dev
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost:5432/dev_mentor")
 
-# Check if we're using PostgreSQL or SQLite
-is_postgres = DATABASE_URL.startswith("postgresql")
+# Ensure we're using PostgreSQL
+if not DATABASE_URL.startswith(("postgresql://", "postgres://")):
+    raise ValueError("DATABASE_URL must be a PostgreSQL connection string")
 
-# SQLAlchemy setup
-if is_postgres:
-    # PostgreSQL configuration
-    engine = create_engine(
-        DATABASE_URL,
-        pool_pre_ping=True,  # Verify connections before use
-        pool_recycle=300,    # Recycle connections every 5 minutes
-    )
-else:
-    # SQLite configuration (for local development)
-    engine = create_engine(DATABASE_URL)
+# SQLAlchemy setup - PostgreSQL only
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,  # Verify connections before use
+    pool_recycle=300,    # Recycle connections every 5 minutes
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 # Database Models
 
-# Define UUID column type based on database
-if is_postgres:
-    UUIDType = UUID(as_uuid=True)
-else:
-    # For SQLite, use String to store UUID as text
-    UUIDType = String(36)
+# PostgreSQL UUID type
+UUIDType = UUID(as_uuid=True)
 
 class User(Base):
     """
@@ -49,14 +41,15 @@ class User(Base):
     """
     __tablename__ = "users"
     
-    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4, name='id_user')
     username = Column(String(50), unique=True, nullable=False)
     email = Column(String(255), unique=True, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
     
-    # Relationship to conversations
+    # Relationships
     conversations = relationship("Conversation", back_populates="user")
+    skill_history = relationship("SkillHistory", back_populates="user")
 
 class Conversation(Base):
     """
@@ -65,7 +58,7 @@ class Conversation(Base):
     __tablename__ = "conversations"
     
     id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUIDType, ForeignKey("users.id"), nullable=False)
+    user_id = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
     session_id = Column(String(255), nullable=False, index=True)
     agent_type = Column(String(20), nullable=False)  # "normal" or "strict"
     title = Column(String(255), nullable=True)  # Optional conversation title
@@ -113,8 +106,8 @@ class MemoryEntry(Base):
     """
     __tablename__ = "memory_entries"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
     
     # Learning insights
     concept = Column(String(100), nullable=False)  # e.g., "react_hooks", "async_await"
@@ -129,6 +122,61 @@ class MemoryEntry(Base):
     
     # Vector store reference
     vector_id = Column(String(255), nullable=True)  # Reference to Chroma embedding
+
+class RefDomain(Base):
+    """
+    Reference table for learning domains
+    """
+    __tablename__ = "ref_domains"
+    
+    id_domain = Column(Integer, primary_key=True)
+    name = Column(String(50), nullable=False, unique=True)
+    description = Column(Text)
+    display_order = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationship to skills
+    skills = relationship("Skill", back_populates="domain")
+
+class Skill(Base):
+    """
+    Skills table - represents learning competencies to be mastered
+    """
+    __tablename__ = "skills"
+    
+    id_skill = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False, unique=True)
+    description = Column(Text)
+    id_domain = Column(Integer, ForeignKey("ref_domains.id_domain"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    domain = relationship("RefDomain", back_populates="skills")
+    skill_history = relationship("SkillHistory", back_populates="skill")
+
+class SkillHistory(Base):
+    """
+    Skill History table - tracks daily snapshots of user skill progression
+    Used by spaced repetition algorithm to optimize learning
+    """
+    __tablename__ = "skill_history"
+    
+    id_history = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+    id_user = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
+    id_skill = Column(Integer, ForeignKey("skills.id_skill"), nullable=False)
+    mastery_level = Column(Integer, nullable=False, default=1)
+    snapshot_date = Column(Date, nullable=False, default=date.today)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", back_populates="skill_history")
+    skill = relationship("Skill", back_populates="skill_history")
+    
+    # Table constraints
+    __table_args__ = (
+        UniqueConstraint('id_user', 'id_skill', 'snapshot_date', name='skill_history_unique_daily'),
+    )
 
 # Database utility functions
 
@@ -167,18 +215,12 @@ def create_conversation(db: Session, user_id: str, session_id: str, agent_type: 
     """
     Create new conversation record
     """
-    # Handle UUID properly for both PostgreSQL and SQLite
-    if is_postgres:
-        # PostgreSQL: convert string to UUID object
-        if isinstance(user_id, str):
-            user_id = uuid.UUID(user_id)
-        conversation_id = uuid.uuid4()
-    else:
-        # SQLite: keep as string
-        conversation_id = str(uuid.uuid4())
+    # PostgreSQL: convert string to UUID object
+    if isinstance(user_id, str):
+        user_id = uuid.UUID(user_id)
     
     conversation = Conversation(
-        id=conversation_id,
+        id=uuid.uuid4(),
         user_id=user_id,
         session_id=session_id,
         agent_type=agent_type
@@ -198,18 +240,12 @@ def save_interaction(
     """
     Save interaction to database for memory and analytics
     """
-    # Handle UUID properly for both PostgreSQL and SQLite
-    if is_postgres:
-        # PostgreSQL: convert string to UUID object
-        if isinstance(conversation_id, str):
-            conversation_id = uuid.UUID(conversation_id)
-        interaction_id = uuid.uuid4()
-    else:
-        # SQLite: keep as string
-        interaction_id = str(uuid.uuid4())
+    # PostgreSQL: convert string to UUID object
+    if isinstance(conversation_id, str):
+        conversation_id = uuid.UUID(conversation_id)
     
     interaction = Interaction(
-        id=interaction_id,
+        id=uuid.uuid4(),
         conversation_id=conversation_id,
         user_message=user_message,
         mentor_response=mentor_response,
@@ -220,8 +256,223 @@ def save_interaction(
     db.refresh(interaction)
     return interaction
 
+# Skill tracking and mapping functions
+
+def create_or_update_skill(db: Session, skill_name: str, description: str = None, domain_name: str = "SYNTAX") -> Skill:
+    """
+    Create or update a skill in the database
+    """
+    # First try to get existing skill
+    skill = db.query(Skill).filter(Skill.name == skill_name).first()
+    if skill:
+        return skill
+    
+    # Get or create domain
+    domain = db.query(RefDomain).filter(RefDomain.name == domain_name).first()
+    if not domain:
+        domain = RefDomain(name=domain_name, description=f"Auto-created domain: {domain_name}")
+        db.add(domain)
+        db.flush()  # Get the ID without committing
+    
+    # Create new skill
+    skill = Skill(
+        name=skill_name,
+        description=description or f"Auto-created skill: {skill_name}",
+        id_domain=domain.id_domain
+    )
+    db.add(skill)
+    db.commit()
+    db.refresh(skill)
+    return skill
+
+def update_skill_history(db: Session, user_id: str, skill_name: str, confidence: float, domain_name: str = "SYNTAX") -> SkillHistory:
+    """
+    Update skill history for a user based on curator analysis
+    """
+    # Convert confidence (0.0-1.0) to mastery level (1-5)
+    mastery_level = max(1, min(5, int(confidence * 4) + 1))
+    
+    # Get or create skill
+    skill = create_or_update_skill(db, skill_name, domain_name=domain_name)
+    
+    # PostgreSQL: convert string to UUID object
+    user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+    
+    # Check for existing skill history today
+    today = date.today()
+    existing_history = db.query(SkillHistory).filter(
+        SkillHistory.id_user == user_uuid,
+        SkillHistory.id_skill == skill.id_skill,
+        SkillHistory.snapshot_date == today
+    ).first()
+    
+    if existing_history:
+        # Update existing entry with higher mastery level
+        if mastery_level > existing_history.mastery_level:
+            existing_history.mastery_level = mastery_level
+            db.commit()
+            db.refresh(existing_history)
+        return existing_history
+    else:
+        # Create new skill history entry
+        skill_history = SkillHistory(
+            id_history=uuid.uuid4(),
+            id_user=user_uuid,
+            id_skill=skill.id_skill,
+            mastery_level=mastery_level,
+            snapshot_date=today
+        )
+        db.add(skill_history)
+        db.commit()
+        db.refresh(skill_history)
+        return skill_history
+
+def get_user_skill_progression(db: Session, user_id: str, limit: int = 20) -> List[dict]:
+    """
+    Get user's skill progression history
+    """
+    # PostgreSQL: convert string to UUID object
+    user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+    
+    # Query skill history with skill names
+    skill_histories = db.query(SkillHistory, Skill.name, RefDomain.name.label("domain_name")).join(
+        Skill, SkillHistory.id_skill == Skill.id_skill
+    ).join(
+        RefDomain, Skill.id_domain == RefDomain.id_domain
+    ).filter(
+        SkillHistory.id_user == user_uuid
+    ).order_by(
+        SkillHistory.snapshot_date.desc()
+    ).limit(limit).all()
+    
+    return [
+        {
+            "skill_name": skill_name,
+            "domain": domain_name,
+            "mastery_level": skill_history.mastery_level,
+            "snapshot_date": skill_history.snapshot_date.isoformat(),
+            "created_at": skill_history.created_at.isoformat()
+        }
+        for skill_history, skill_name, domain_name in skill_histories
+    ]
+
+def process_curator_analysis(db: Session, user_id: str, curator_analysis: dict) -> dict:
+    """
+    Process curator analysis results and update skill tracking
+    """
+    results = {
+        "skills_updated": [],
+        "new_skills_created": [],
+        "skill_histories_created": 0
+    }
+    
+    # Map curator skills to database skills with domain classification
+    skill_domain_mapping = {
+        # JavaScript/Programming Fundamentals
+        "variable_declaration": "SYNTAX",
+        "let_keyword": "SYNTAX", 
+        "hoisting": "SYNTAX",
+        "temporal_dead_zone": "SYNTAX",
+        "function_syntax": "SYNTAX",
+        "conditional_logic": "LOGIC",
+        "loop_structures": "LOGIC",
+        
+        # React/Frontend
+        "react_hooks": "FRAMEWORKS",
+        "useState": "FRAMEWORKS",
+        "useEffect": "FRAMEWORKS",
+        "state_updates": "FRAMEWORKS",
+        "react_rendering": "FRAMEWORKS",
+        "component_design": "ARCHITECTURE",
+        
+        # Database
+        "sql_queries": "DATABASES",
+        "joins": "DATABASES", 
+        "aggregate_functions": "DATABASES",
+        "database_relationships": "DATABASES",
+        
+        # Error Handling & Debugging
+        "error_handling": "DEBUGGING",
+        "async_await": "SYNTAX",
+        "debugging": "DEBUGGING",
+        
+        # Performance & Architecture
+        "performance": "PERFORMANCE",
+        "system_design": "ARCHITECTURE",
+        "microservices": "ARCHITECTURE",
+        "event_sourcing": "ARCHITECTURE",
+    }
+    
+    # Process each skill from curator analysis
+    for skill_name in curator_analysis.get("skills", []):
+        # Normalize skill name
+        normalized_skill = skill_name.lower().replace(" ", "_").replace("-", "_")
+        domain = skill_domain_mapping.get(normalized_skill, "SYNTAX")
+        
+        try:
+            # Update skill history
+            skill_history = update_skill_history(
+                db, 
+                user_id, 
+                skill_name, 
+                curator_analysis.get("confidence", 0.5), 
+                domain
+            )
+            
+            results["skills_updated"].append({
+                "skill_name": skill_name,
+                "domain": domain,
+                "mastery_level": skill_history.mastery_level
+            })
+            results["skill_histories_created"] += 1
+            
+        except Exception as e:
+            print(f"Error processing skill {skill_name}: {e}")
+            continue
+    
+    return results
+
+def populate_initial_data(db: Session):
+    """
+    Populate initial reference data and skills
+    """
+    # Create domains if they don't exist
+    domains = [
+        ("ALGORITHMIC", "Data structures, complexity, optimization", 1),
+        ("SYNTAX", "Language syntax mastery", 2),
+        ("LOGIC", "Programming logic, control structures", 3),
+        ("ARCHITECTURE", "Design patterns, code organization", 4),
+        ("DEBUGGING", "Error resolution, testing, troubleshooting", 5),
+        ("FRAMEWORKS", "React, Angular, Spring, etc.", 6),
+        ("DATABASES", "SQL, NoSQL, data modeling", 7),
+        ("DEVOPS", "Deployment, CI/CD, containerization", 8),
+        ("SECURITY", "Application security, authentication", 9),
+        ("PERFORMANCE", "Optimization, monitoring, scaling", 10),
+    ]
+    
+    for name, description, display_order in domains:
+        existing_domain = db.query(RefDomain).filter(RefDomain.name == name).first()
+        if not existing_domain:
+            domain = RefDomain(
+                name=name,
+                description=description,
+                display_order=display_order
+            )
+            db.add(domain)
+    
+    db.commit()
+    print("✅ Initial domain data populated")
+
 # Development helper
 if __name__ == "__main__":
     print("Creating database tables...")
     create_tables()
+    
+    # Populate initial data
+    db = SessionLocal()
+    try:
+        populate_initial_data(db)
+    finally:
+        db.close()
+    
     print("Done!")

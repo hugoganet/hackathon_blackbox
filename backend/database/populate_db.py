@@ -20,7 +20,7 @@ from models import (
 load_dotenv()
 
 # Database connection
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dev_mentor.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost:5432/dev_mentor")
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
