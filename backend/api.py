@@ -17,10 +17,16 @@ from sqlalchemy.orm import Session
 
 # Import our components
 from .main import BlackboxMentor, load_env_file
-from .database import (
+from .database_operations import (
     get_db, create_tables, get_user_by_username, create_conversation, save_interaction,
-    process_curator_analysis, get_user_skill_progression, populate_initial_data
+    process_curator_analysis, get_user_skill_progression, populate_initial_data,
+    create_flashcard, get_due_flashcards, get_flashcard_by_id, update_flashcard_schedule,
+    create_review_session, get_user_review_history, get_user_flashcard_stats,
+    get_flashcards_by_skill, batch_create_flashcards, delete_flashcard
 )
+from .spaced_repetition import SpacedRepetitionEngine, ReviewResult
+from datetime import date, timedelta
+import uuid
 from .memory_store import get_memory_store, ConversationMemory
 
 # Load environment variables
@@ -31,12 +37,13 @@ normal_mentor: Optional[BlackboxMentor] = None
 strict_mentor: Optional[BlackboxMentor] = None
 curator_agent: Optional[BlackboxMentor] = None
 memory_store: Optional[ConversationMemory] = None
+spaced_repetition_engine: Optional[SpacedRepetitionEngine] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifecycle - startup and shutdown"""
     # Startup
-    global normal_mentor, strict_mentor, curator_agent, memory_store
+    global normal_mentor, strict_mentor, curator_agent, memory_store, spaced_repetition_engine
     
     # Load environment variables
     load_env_file()
@@ -47,7 +54,7 @@ async def lifespan(app: FastAPI):
         print("✅ Database tables initialized")
         
         # Populate initial skill data
-        from .database import SessionLocal
+        from .database_operations import SessionLocal
         db = SessionLocal()
         try:
             populate_initial_data(db)
@@ -63,6 +70,10 @@ async def lifespan(app: FastAPI):
         # Initialize vector store (Chroma)
         memory_store = get_memory_store()
         print("✅ Memory store initialized")
+        
+        # Initialize spaced repetition engine
+        spaced_repetition_engine = SpacedRepetitionEngine()
+        print("✅ Spaced repetition engine initialized")
         
     except Exception as e:
         print(f"❌ Startup error: {e}")
@@ -130,6 +141,72 @@ class CuratorAnalysisResponse(BaseModel):
     confidence: float
     analysis_time_ms: int
     skill_tracking: Dict[str, Any] = None
+
+
+# Flashcard API Models
+class FlashcardCreateRequest(BaseModel):
+    """Request model for creating flashcards"""
+    question: str
+    answer: str
+    difficulty: int = 1  # 1-5 scale
+    card_type: str = "concept"
+    skill_id: Optional[int] = None
+    interaction_id: Optional[str] = None
+    confidence_score: float = 0.5  # From curator analysis
+
+
+class FlashcardResponse(BaseModel):
+    """Response model for flashcard data"""
+    id: str
+    question: str
+    answer: str
+    difficulty: int
+    card_type: str
+    next_review_date: str  # ISO date string
+    review_count: int
+    created_at: str
+    skill_id: Optional[int] = None
+
+
+class ReviewRequest(BaseModel):
+    """Request model for recording review results"""
+    flashcard_id: str
+    user_id: str
+    success_score: int  # 0-5 scale
+    response_time: Optional[int] = None  # seconds
+
+
+class ReviewResponse(BaseModel):
+    """Response model for review submission"""
+    success: bool
+    next_review_date: str  # ISO date string
+    interval_days: int
+    difficulty_factor: float
+    card_state: str
+    message: str
+
+
+class DueCardsResponse(BaseModel):
+    """Response model for due cards"""
+    flashcards: List[FlashcardResponse]
+    total_due: int
+    user_stats: Dict[str, Any]
+
+
+class FlashcardStatsResponse(BaseModel):
+    """Response model for user flashcard statistics"""
+    total_flashcards: int
+    due_flashcards: int
+    recent_reviews: int
+    average_score: float
+    success_rate: float
+    streak_days: int
+
+
+class BatchCreateRequest(BaseModel):
+    """Request model for batch flashcard creation"""
+    flashcards: List[FlashcardCreateRequest]
+    user_id: str
 
 @app.get("/", response_model=HealthResponse)
 async def root():
@@ -299,7 +376,7 @@ async def get_system_stats(db: Session = Depends(get_db)):
     """
     try:
         # Database stats
-        from database import User, Conversation, Interaction
+        from .database.models import User, Conversation, Interaction
         
         user_count = db.query(User).count()
         conversation_count = db.query(Conversation).count() 
@@ -461,6 +538,243 @@ async def get_user_skills(user_id: str, limit: int = 20, db: Session = Depends(g
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving skills: {str(e)}")
+
+
+# =============================================================================
+# FLASHCARD AND SPACED REPETITION API ENDPOINTS
+# =============================================================================
+
+@app.post("/flashcards/create", response_model=FlashcardResponse)
+async def create_flashcard_endpoint(request: FlashcardCreateRequest, db: Session = Depends(get_db)):
+    """Create a new flashcard with spaced repetition scheduling"""
+    try:
+        # Use spaced repetition engine to calculate initial parameters
+        initial_params = spaced_repetition_engine.get_initial_parameters(
+            confidence_score=request.confidence_score
+        )
+        
+        # Create flashcard in database
+        flashcard = create_flashcard(
+            db=db,
+            user_id="", # Will be derived from interaction_id if provided
+            question=request.question,
+            answer=request.answer,
+            difficulty=request.difficulty,
+            card_type=request.card_type,
+            skill_id=request.skill_id,
+            interaction_id=request.interaction_id,
+            next_review_date=initial_params.next_review_date
+        )
+        
+        return FlashcardResponse(
+            id=str(flashcard.id),
+            question=flashcard.question,
+            answer=flashcard.answer,
+            difficulty=flashcard.difficulty,
+            card_type=flashcard.card_type,
+            next_review_date=flashcard.next_review_date.isoformat(),
+            review_count=flashcard.review_count,
+            created_at=flashcard.created_at.isoformat(),
+            skill_id=flashcard.skill_id
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating flashcard: {str(e)}")
+
+
+@app.get("/flashcards/review/{user_id}", response_model=DueCardsResponse)
+async def get_due_flashcards_endpoint(user_id: str, limit: int = 20, db: Session = Depends(get_db)):
+    """Get flashcards due for review"""
+    try:
+        due_flashcards = get_due_flashcards(db, user_id, limit)
+        user_stats = get_user_flashcard_stats(db, user_id)
+        
+        flashcard_responses = [
+            FlashcardResponse(
+                id=str(card.id),
+                question=card.question,
+                answer=card.answer,
+                difficulty=card.difficulty,
+                card_type=card.card_type,
+                next_review_date=card.next_review_date.isoformat(),
+                review_count=card.review_count,
+                created_at=card.created_at.isoformat(),
+                skill_id=card.skill_id
+            ) for card in due_flashcards
+        ]
+        
+        return DueCardsResponse(
+            flashcards=flashcard_responses,
+            total_due=len(flashcard_responses),
+            user_stats=user_stats
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving due flashcards: {str(e)}")
+
+
+@app.post("/flashcards/review", response_model=ReviewResponse)
+async def submit_review_endpoint(request: ReviewRequest, db: Session = Depends(get_db)):
+    """Submit a flashcard review and update spaced repetition schedule"""
+    try:
+        # Get current flashcard data
+        flashcard = get_flashcard_by_id(db, request.flashcard_id)
+        if not flashcard:
+            raise HTTPException(status_code=404, detail="Flashcard not found")
+        
+        # Create review session record
+        review_session = create_review_session(
+            db=db,
+            user_id=request.user_id,
+            flashcard_id=request.flashcard_id,
+            success_score=request.success_score,
+            response_time=request.response_time
+        )
+        
+        # Calculate new spaced repetition parameters
+        new_params = spaced_repetition_engine.calculate_next_review(
+            current_interval=(flashcard.next_review_date - date.today()).days,
+            difficulty_factor=float(flashcard.difficulty),  # Convert to ease factor approximation
+            success_score=request.success_score,
+            review_count=flashcard.review_count
+        )
+        
+        # Update flashcard schedule
+        updated_flashcard = update_flashcard_schedule(
+            db=db,
+            flashcard_id=request.flashcard_id,
+            next_review_date=new_params.next_review_date,
+            difficulty=new_params.difficulty_factor,
+            review_count=new_params.review_count
+        )
+        
+        return ReviewResponse(
+            success=True,
+            next_review_date=new_params.next_review_date.isoformat(),
+            interval_days=new_params.interval_days,
+            difficulty_factor=new_params.difficulty_factor,
+            card_state=new_params.card_state.value,
+            message=f"Review recorded successfully. Next review in {new_params.interval_days} days."
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing review: {str(e)}")
+
+
+@app.get("/flashcards/stats/{user_id}", response_model=FlashcardStatsResponse) 
+async def get_flashcard_stats_endpoint(user_id: str, db: Session = Depends(get_db)):
+    """Get comprehensive flashcard statistics for a user"""
+    try:
+        stats = get_user_flashcard_stats(db, user_id)
+        
+        return FlashcardStatsResponse(
+            total_flashcards=stats["total_flashcards"],
+            due_flashcards=stats["due_flashcards"],
+            recent_reviews=stats["recent_reviews"],
+            average_score=stats["average_score"],
+            success_rate=stats["success_rate"],
+            streak_days=stats["streak_days"]
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving stats: {str(e)}")
+
+
+@app.get("/flashcards/schedule/{user_id}")
+async def get_review_schedule_endpoint(user_id: str, days: int = 7, db: Session = Depends(get_db)):
+    """Get review schedule for upcoming days"""
+    try:
+        today = date.today()
+        schedule = {}
+        
+        for i in range(days):
+            check_date = today + timedelta(days=i)
+            day_flashcards = db.query(Flashcard)\
+                .join(Interaction, Flashcard.interaction_id == Interaction.id, isouter=True)\
+                .join(Conversation, Interaction.conversation_id == Conversation.id, isouter=True)\
+                .filter(
+                    Flashcard.next_review_date == check_date,
+                    Conversation.user_id == uuid.UUID(user_id) if user_id else True
+                ).count()
+            
+            schedule[check_date.isoformat()] = {
+                "date": check_date.isoformat(),
+                "cards_due": day_flashcards,
+                "is_today": i == 0
+            }
+        
+        return {
+            "user_id": user_id,
+            "schedule": schedule,
+            "total_upcoming": sum(day["cards_due"] for day in schedule.values())
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving schedule: {str(e)}")
+
+
+@app.post("/flashcards/batch", response_model=List[FlashcardResponse])
+async def batch_create_flashcards_endpoint(request: BatchCreateRequest, db: Session = Depends(get_db)):
+    """Create multiple flashcards in batch"""
+    try:
+        flashcards_data = []
+        
+        for card_request in request.flashcards:
+            # Calculate initial parameters for each card
+            initial_params = spaced_repetition_engine.get_initial_parameters(
+                confidence_score=card_request.confidence_score
+            )
+            
+            card_data = {
+                "question": card_request.question,
+                "answer": card_request.answer,
+                "difficulty": card_request.difficulty,
+                "card_type": card_request.card_type,
+                "next_review_date": initial_params.next_review_date,
+                "skill_id": card_request.skill_id,
+                "interaction_id": uuid.UUID(card_request.interaction_id) if card_request.interaction_id else None
+            }
+            flashcards_data.append(card_data)
+        
+        # Create flashcards in batch
+        created_flashcards = batch_create_flashcards(db, flashcards_data)
+        
+        return [
+            FlashcardResponse(
+                id=str(card.id),
+                question=card.question,
+                answer=card.answer,
+                difficulty=card.difficulty,
+                card_type=card.card_type,
+                next_review_date=card.next_review_date.isoformat(),
+                review_count=card.review_count,
+                created_at=card.created_at.isoformat(),
+                skill_id=card.skill_id
+            ) for card in created_flashcards
+        ]
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating flashcards: {str(e)}")
+
+
+@app.delete("/flashcards/{flashcard_id}")
+async def delete_flashcard_endpoint(flashcard_id: str, user_id: str, db: Session = Depends(get_db)):
+    """Delete a flashcard (with ownership verification)"""
+    try:
+        success = delete_flashcard(db, flashcard_id, user_id)
+        
+        if success:
+            return {"success": True, "message": "Flashcard deleted successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="Flashcard not found or access denied")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting flashcard: {str(e)}")
+
 
 # Development server runner
 if __name__ == "__main__":

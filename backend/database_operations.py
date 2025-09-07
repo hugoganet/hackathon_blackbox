@@ -3,14 +3,19 @@ Database models and configuration for Dev Mentor AI
 Uses PostgreSQL with SQLAlchemy for Railway deployment
 """
 
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Date, UniqueConstraint
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Date, UniqueConstraint, Float, CheckConstraint
 from sqlalchemy.orm import sessionmaker, Session, relationship
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import uuid
 import os
-from typing import Generator, List, Optional
+from typing import Generator, List, Optional, Dict
+
+# Import models from the comprehensive models file
+from .database.models import (
+    Base, User, Conversation, Interaction, MemoryEntry, RefDomain, 
+    Skill, SkillHistory, Flashcard, ReviewSession
+)
 
 # Database configuration
 # Railway automatically provides DATABASE_URL environment variable
@@ -32,7 +37,6 @@ else:
     engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
 
 # Database Models
 
@@ -492,6 +496,212 @@ def populate_initial_data(db: Session):
     
     db.commit()
     print("✅ Initial domain data populated")
+
+# Flashcard and Spaced Repetition Functions
+
+def create_flashcard(
+    db: Session, 
+    user_id: str,
+    question: str, 
+    answer: str, 
+    difficulty: int = 1,
+    card_type: str = "concept",
+    skill_id: Optional[int] = None,
+    interaction_id: Optional[str] = None,
+    next_review_date: Optional[date] = None
+) -> Flashcard:
+    """Create a new flashcard"""
+    if next_review_date is None:
+        next_review_date = date.today() + timedelta(days=1)
+    
+    flashcard = Flashcard(
+        question=question,
+        answer=answer,
+        difficulty=difficulty,
+        card_type=card_type,
+        next_review_date=next_review_date,
+        skill_id=skill_id,
+        interaction_id=uuid.UUID(interaction_id) if interaction_id else None
+    )
+    
+    db.add(flashcard)
+    db.commit()
+    db.refresh(flashcard)
+    return flashcard
+
+
+def get_due_flashcards(db: Session, user_id: str, limit: int = 20) -> List[Flashcard]:
+    """Get flashcards due for review for a specific user"""
+    today = date.today()
+    
+    # Get flashcards that are due for review
+    flashcards = db.query(Flashcard)\
+        .join(Interaction, Flashcard.interaction_id == Interaction.id, isouter=True)\
+        .join(Conversation, Interaction.conversation_id == Conversation.id, isouter=True)\
+        .filter(
+            Flashcard.next_review_date <= today,
+            Conversation.user_id == uuid.UUID(user_id) if user_id else True
+        )\
+        .order_by(Flashcard.next_review_date)\
+        .limit(limit)\
+        .all()
+    
+    return flashcards
+
+
+def get_flashcard_by_id(db: Session, flashcard_id: str) -> Optional[Flashcard]:
+    """Get a flashcard by ID"""
+    return db.query(Flashcard)\
+        .filter(Flashcard.id == uuid.UUID(flashcard_id))\
+        .first()
+
+
+def update_flashcard_schedule(
+    db: Session, 
+    flashcard_id: str, 
+    next_review_date: date,
+    difficulty: float,
+    review_count: int
+) -> Optional[Flashcard]:
+    """Update flashcard review schedule"""
+    flashcard = get_flashcard_by_id(db, flashcard_id)
+    if flashcard:
+        flashcard.next_review_date = next_review_date
+        flashcard.difficulty = min(5, max(1, int(difficulty)))  # Keep in 1-5 range
+        flashcard.review_count = review_count
+        db.commit()
+        db.refresh(flashcard)
+    return flashcard
+
+
+def create_review_session(
+    db: Session,
+    user_id: str,
+    flashcard_id: str,
+    success_score: int,
+    response_time: Optional[int] = None
+) -> ReviewSession:
+    """Record a flashcard review session"""
+    review = ReviewSession(
+        user_id=uuid.UUID(user_id),
+        flashcard_id=uuid.UUID(flashcard_id),
+        success_score=success_score,
+        response_time=response_time
+    )
+    
+    db.add(review)
+    db.commit()
+    db.refresh(review)
+    return review
+
+
+def get_user_review_history(
+    db: Session, 
+    user_id: str, 
+    flashcard_id: Optional[str] = None,
+    days: int = 30
+) -> List[ReviewSession]:
+    """Get user's review history"""
+    cutoff_date = datetime.utcnow() - timedelta(days=days)
+    
+    query = db.query(ReviewSession)\
+        .filter(
+            ReviewSession.user_id == uuid.UUID(user_id),
+            ReviewSession.review_date >= cutoff_date
+        )
+    
+    if flashcard_id:
+        query = query.filter(ReviewSession.flashcard_id == uuid.UUID(flashcard_id))
+    
+    return query.order_by(ReviewSession.review_date.desc()).all()
+
+
+def get_user_flashcard_stats(db: Session, user_id: str) -> Dict:
+    """Get comprehensive flashcard statistics for a user"""
+    today = date.today()
+    
+    # Count total flashcards
+    total_flashcards = db.query(Flashcard)\
+        .join(Interaction, Flashcard.interaction_id == Interaction.id, isouter=True)\
+        .join(Conversation, Interaction.conversation_id == Conversation.id, isouter=True)\
+        .filter(Conversation.user_id == uuid.UUID(user_id))\
+        .count()
+    
+    # Count due flashcards
+    due_flashcards = db.query(Flashcard)\
+        .join(Interaction, Flashcard.interaction_id == Interaction.id, isouter=True)\
+        .join(Conversation, Interaction.conversation_id == Conversation.id, isouter=True)\
+        .filter(
+            Conversation.user_id == uuid.UUID(user_id),
+            Flashcard.next_review_date <= today
+        )\
+        .count()
+    
+    # Get recent review performance (last 7 days)
+    week_ago = datetime.utcnow() - timedelta(days=7)
+    recent_reviews = db.query(ReviewSession)\
+        .filter(
+            ReviewSession.user_id == uuid.UUID(user_id),
+            ReviewSession.review_date >= week_ago
+        )\
+        .all()
+    
+    total_reviews = len(recent_reviews)
+    avg_score = sum(r.success_score for r in recent_reviews) / total_reviews if total_reviews > 0 else 0
+    success_rate = sum(1 for r in recent_reviews if r.success_score >= 3) / total_reviews if total_reviews > 0 else 0
+    
+    return {
+        "total_flashcards": total_flashcards,
+        "due_flashcards": due_flashcards,
+        "recent_reviews": total_reviews,
+        "average_score": round(avg_score, 2),
+        "success_rate": round(success_rate, 2),
+        "streak_days": 0  # Would require more complex calculation
+    }
+
+
+def get_flashcards_by_skill(db: Session, user_id: str, skill_id: int) -> List[Flashcard]:
+    """Get all flashcards for a specific skill"""
+    return db.query(Flashcard)\
+        .join(Interaction, Flashcard.interaction_id == Interaction.id, isouter=True)\
+        .join(Conversation, Interaction.conversation_id == Conversation.id, isouter=True)\
+        .filter(
+            Flashcard.skill_id == skill_id,
+            Conversation.user_id == uuid.UUID(user_id)
+        )\
+        .order_by(Flashcard.created_at)\
+        .all()
+
+
+def batch_create_flashcards(db: Session, flashcards_data: List[Dict]) -> List[Flashcard]:
+    """Create multiple flashcards efficiently"""
+    flashcards = []
+    for data in flashcards_data:
+        flashcard = Flashcard(**data)
+        flashcards.append(flashcard)
+    
+    db.add_all(flashcards)
+    db.commit()
+    return flashcards
+
+
+def delete_flashcard(db: Session, flashcard_id: str, user_id: str) -> bool:
+    """Delete a flashcard (with ownership check)"""
+    flashcard = db.query(Flashcard)\
+        .join(Interaction, Flashcard.interaction_id == Interaction.id, isouter=True)\
+        .join(Conversation, Interaction.conversation_id == Conversation.id, isouter=True)\
+        .filter(
+            Flashcard.id == uuid.UUID(flashcard_id),
+            Conversation.user_id == uuid.UUID(user_id)
+        )\
+        .first()
+    
+    if flashcard:
+        db.delete(flashcard)
+        db.commit()
+        return True
+    return False
+
 
 # Development helper
 if __name__ == "__main__":

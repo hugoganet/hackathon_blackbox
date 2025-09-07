@@ -14,7 +14,7 @@ import shutil
 
 # Import our application components
 from backend.api import app
-from backend.database import Base, get_db
+from backend.database_operations import Base, get_db
 from backend.memory_store import ConversationMemory
 
 # Create test database
