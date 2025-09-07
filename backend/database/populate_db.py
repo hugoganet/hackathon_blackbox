@@ -180,9 +180,9 @@ def create_sessions_and_interactions(db: Session, users, domains, languages, int
     intent_list = db.query(RefIntent).all()
     
     # Alex's session (Junior Frontend)
-    alex_session1 = Session(
+    alex_session1 = ChatSession(
         id_session=uuid.UUID('660e8400-e29b-41d4-a716-446655440001'),
-        id_user=users[0].id_user_user,
+        id_user=users[0].id_user,
         title='Understanding React Hooks',
         agent_type='strict',
         created_at=datetime(2024, 1, 15, 10, 0, 0),
@@ -206,9 +206,9 @@ def create_sessions_and_interactions(db: Session, users, domains, languages, int
     db.add(alex_interaction1)
     
     # Maria's session (Full-Stack)
-    maria_session1 = Session(
+    maria_session1 = ChatSession(
         id_session=uuid.UUID('660e8400-e29b-41d4-a716-446655440004'),
-        id_user=users[1].id_user_user,
+        id_user=users[1].id_user,
         title='API Design Best Practices',
         agent_type='normal',
         created_at=datetime(2024, 1, 10, 16, 0, 0),
@@ -232,7 +232,7 @@ def create_sessions_and_interactions(db: Session, users, domains, languages, int
     db.add(maria_interaction1)
     
     # David's session (Senior Backend)
-    david_session1 = Session(
+    david_session1 = ChatSession(
         id_session=uuid.UUID('660e8400-e29b-41d4-a716-446655440007'),
         id_user=users[2].id_user,
         title='Microservices Architecture',
@@ -283,7 +283,7 @@ def create_skill_history(db: Session, users, skills):
         
         # David's progression (Senior - Expert level)
         SkillHistory(
-            id_user=users[2].id,
+            id_user=users[2].id_user,
             id_skill=skills[12].id_skill,  # SQL Queries
             mastery_level=5,
             snapshot_date=date(2024, 1, 22)
@@ -300,14 +300,14 @@ def create_flashcards_and_reviews(db: Session, users, interactions, skills):
     
     # Flashcard from Alex's interaction
     flashcard1 = Flashcard(
-        id=uuid.UUID('880e8400-e29b-41d4-a716-446655440001'),
+        id_flashcard=uuid.UUID('880e8400-e29b-41d4-a716-446655440001'),
         question='What happens when you call useState() without an initial value in React?',
         answer='useState() without arguments returns undefined as the initial state value. Always provide an initial value.',
         difficulty=2,
         card_type='concept',
         next_review_date=date(2024, 2, 6),
         review_count=0,
-        id_interaction=interactions[0].id,
+        id_interaction=interactions[0].id_interaction,
         id_skill=skills[10].id_skill  # React Hooks
     )
     db.add(flashcard1)
@@ -315,7 +315,7 @@ def create_flashcards_and_reviews(db: Session, users, interactions, skills):
     # Review session for Alex
     review1 = ReviewSession(
         id_user=users[0].id_user,
-        id_flashcard=flashcard1.id,
+        id_flashcard=flashcard1.id_flashcard,
         success_score=2,
         response_time=45,
         review_date=datetime(2024, 1, 16, 9, 30, 0)
