@@ -149,8 +149,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",  # Local React development
-        "https://*.vercel.app",   # Vercel deployment
-        "https://dev-mentor-ai.vercel.app"  # Your production frontend
+        "https://socrateai.vercel.app",  # Your production frontend
+        "https://dev-mentor-ai.vercel.app"  # Your production frontend (backup)
     ],
     allow_credentials=True,
     allow_methods=["*"],
