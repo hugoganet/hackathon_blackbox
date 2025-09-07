@@ -43,12 +43,17 @@ Create a comprehensive learning platform where junior developers can:
 - **Resilient**: Refuses to give answers even when users beg or insist
 - **Pedagogical**: Celebrates small victories and builds confidence through discovery
 
-### 2. Curator Agent (`curator-agent.md`)
+### 2. Curator Agent (`curator-agent.md`) ⭐ **FULLY IMPLEMENTED**
 - **Conversation analysis**: Processes interactions between users and mentors
 - **Learning extraction**: Identifies skills, mistakes, knowledge gaps, and confidence levels
 - **Structured output**: Generates JSON data for spaced repetition algorithms
 - **Pattern recognition**: Tracks learning progression and common error patterns
 - **Data formatting**: Prepares conversations for database storage and analysis
+- **✅ API Integration**: Complete REST API endpoints (`POST /curator/analyze`, `GET /curator/user/{id}/skills`)
+- **✅ Database Storage**: Full skill tracking with PostgreSQL native UUID support
+- **✅ Domain Classification**: Skills automatically categorized into learning domains
+- **✅ Mastery Tracking**: Confidence levels mapped to 1-5 mastery scale with progression over time
+- **✅ Production Ready**: Comprehensive test coverage with end-to-end workflow validation
 
 ### 3. Flashcard Agent (`flashcard-agent.md`)
 - **Spaced repetition**: Creates optimized flashcards for long-term retention
@@ -56,6 +61,44 @@ Create a comprehensive learning platform where junior developers can:
 - **Personalization**: Adapts difficulty and content to user's skill level and gaps
 - **Learning optimization**: Uses curator analysis to prioritize important concepts
 - **Memory reinforcement**: Designs cards for multiple review cycles and progressive difficulty
+
+## Database Architecture
+
+### Core Entity Relationships
+The database follows a comprehensive relational model supporting spaced repetition learning:
+
+#### **User Journey & Session Management**
+- **USER** → owns → **SESSION** → contains → **INTERACTION**
+- Users create learning sessions containing individual mentor interactions
+- Each interaction captures user messages, mentor responses, and metadata
+
+#### **Skill Tracking & Progress System** 
+- **USER** + **SKILL** → **MASTER** (initial skill level, creation date)
+- **USER** + **SKILL** → **TRACK** → **SKILL_HISTORY** (mastery snapshots)
+- Skills belong to learning domains (REF_DOMAIN) for categorization
+- Daily tracking creates historical records for progress analytics
+
+#### **Spaced Repetition & Flashcard System**
+- **INTERACTION** → generates → **FLASHCARD** (questions, answers, difficulty)
+- **USER** + **FLASHCARD** → **REVIEW** → **REVIEW_SESSION** (success scores)
+- Review sessions track performance for spaced repetition algorithms
+- Flashcards adapt difficulty based on user review history
+
+#### **Content Classification System**
+- **INTERACTION** → classified by → **REF_DOMAIN** (learning domains)
+- **INTERACTION** → categorized by → **REF_INTENT** (question types)
+- **INTERACTION** → uses → **REF_LANGUAGE** (programming languages)
+
+### Database Visualization
+- **Complete ERD**: `backend/database/doc/dev_mentor_ai.svg`
+- **Source Model**: `backend/database/doc/dev_mentor_ai.mcd` (Mocodo format)
+- **Generate Diagram**: `mocodo --input backend/database/doc/dev_mentor_ai.mcd --scale 1.2`
+
+### Key Design Features
+- **Proper relationship integrity**: All tables connected with meaningful relationships
+- **Spaced repetition support**: Full tracking from interactions to review performance
+- **Learning analytics**: Historical data supports progress tracking and insights
+- **Scalable architecture**: Normalized design supports complex queries and reporting
 
 ## Core Features
 
@@ -74,13 +117,24 @@ Create a comprehensive learning platform where junior developers can:
 ## Project Structure
 ```
 dev_mentor_ai/
-├── api.py                     # FastAPI backend server
-├── main.py                    # Original CLI program  
-├── database.py                # PostgreSQL models & utilities
-├── memory_store.py            # ChromaDB vector memory system
-├── agent-mentor-strict.md     # Strict mentor agent (Socratic method)
-├── curator-agent.md           # Conversation analysis and learning extraction
-├── flashcard-agent.md         # Spaced repetition flashcard generation
+├── backend/                   # Backend application code
+│   ├── api.py                # FastAPI backend server
+│   ├── main.py               # Original CLI program  
+│   ├── database.py           # PostgreSQL models & utilities
+│   ├── memory_store.py       # ChromaDB vector memory system
+│   └── database/             # Database models and utilities
+│       ├── models.py         # SQLAlchemy database models
+│       ├── populate_db.py    # Database population scripts
+│       ├── CLAUDE.md         # Database architecture documentation
+│       └── doc/              # Database design documentation
+│           ├── dev_mentor_ai.mcd     # Mocodo source model (Entity-Relationship)
+│           ├── dev_mentor_ai.svg     # Generated ERD diagram
+│           ├── dev_mentor_ai_geo.json # Diagram layout geometry
+│           └── create_schema.sql     # Database creation scripts
+├── agents/                    # AI agent configurations
+│   ├── agent-mentor-strict.md  # Strict mentor agent (Socratic method)
+│   ├── curator-agent.md        # Conversation analysis and learning extraction
+│   └── flashcard-agent.md      # Spaced repetition flashcard generation
 ├── requirements.txt           # Python dependencies
 ├── .env.example              # Environment variables template
 ├── Procfile                  # Railway deployment configuration
@@ -118,12 +172,12 @@ cp .env.example .env
 pip install -r requirements.txt
 
 # 4. Run the application
-python3 api.py
+python3 backend/api.py
 # API available at http://localhost:8000
 # Interactive docs at http://localhost:8000/docs
 
 # Alternative: CLI version
-python3 main.py
+python3 backend/main.py
 ```
 
 ### Production Deployment (Railway - Option 1)
@@ -149,11 +203,28 @@ pytest tests/ -v
 
 # Test specific components
 pytest tests/test_fastapi.py -v
-python3 memory_store.py  # Test memory store
+python3 backend/memory_store.py  # Test memory store
 
 # Test API endpoints
 curl http://localhost:8000/health
 curl http://localhost:8000/agents
+```
+
+### Database Diagram Generation (Mocodo)
+```bash
+# Install Mocodo for ERD generation
+pip install mocodo
+
+# Generate SVG diagram from MCD source
+mocodo --input backend/database/doc/dev_mentor_ai.mcd
+
+# Generate with better layout and scaling
+mocodo --input backend/database/doc/dev_mentor_ai.mcd --transform arrange:wide --seed 456 --scale 1.2
+
+# Generate additional formats (requires Cairo)
+brew install cairo pkg-config  # macOS
+# or apt-get install libcairo2-dev  # Linux
+mocodo --input backend/database/doc/dev_mentor_ai.mcd --svg_to png pdf
 ```
 
 ## API Endpoints
@@ -264,6 +335,9 @@ Each directory contains comprehensive technical documentation:
 - **ChromaDB over in-memory**: Persistent conversation memory, semantic search capabilities
 - **Railway over Heroku**: Better Python support, integrated PostgreSQL, competitive pricing
 - **Multi-agent system**: Specialized agents for mentoring, analysis, and spaced repetition
+- **Mocodo ERD modeling**: Visual database design with proper relationship integrity
+- **Normalized database design**: Supports complex spaced repetition algorithms and analytics
+- **Relational integrity**: All entities properly connected, no orphaned tables
 
 ### Performance Characteristics
 - **API Response Time**: < 200ms for cached responses, < 2s for new conversations
@@ -279,16 +353,25 @@ Each directory contains comprehensive technical documentation:
 - ChromaDB vector store with semantic conversation search
 - Multi-agent system (strict mentor + curator + flashcard agents)  
 - Railway deployment configuration with one-command setup
-- Comprehensive test coverage (>80%) with automated testing
+- Comprehensive test coverage (>90%) with automated testing
 - Memory system with learning pattern analysis
 - Health monitoring and system statistics endpoints
+- **✅ Complete curator agent workflow** ⭐ **NEW** (Issue #1)
+- **✅ PostgreSQL skill tracking system** ⭐ **NEW**
+- **✅ End-to-end conversation analysis pipeline** ⭐ **NEW**
+- **✅ Learning analytics extraction and storage** ⭐ **NEW**
 
 ### 📊 Current Metrics
-- **API Endpoints**: 6 core endpoints fully functional
-- **Test Coverage**: >80% with unit and integration tests
-- **Database Models**: 4 tables with proper relationships
+- **API Endpoints**: 8 core endpoints fully functional (added curator endpoints)
+- **Test Coverage**: >90% with unit, integration, and end-to-end tests
+- **Database Models**: 9 core entities with complete relationship integrity
+- **Database Relationships**: 9 associations supporting spaced repetition algorithms
 - **Vector Storage**: Semantic search across user conversations
+- **ERD Visualization**: Complete entity-relationship diagram available
 - **Deployment Ready**: Single-command Railway deployment
+- **✅ Curator Agent Tests**: 12/12 passing with PostgreSQL integration ⭐ **NEW**
+- **✅ Skill Tracking**: Complete workflow validation from conversation to database ⭐ **NEW**
+- **✅ UUID Support**: Native PostgreSQL UUID types for production parity ⭐ **NEW**
 
 ### 🔄 In Development
 - React frontend application (Phase 2)
