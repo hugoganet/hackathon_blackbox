@@ -22,7 +22,7 @@ from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
 
 # Import our components
-from main import BlackboxMentor, load_env_file
+from main import BlackboxMentor, load_env_file, get_agent_path
 from database_operations import (
     get_db, create_tables, get_user_by_username, create_session, save_interaction,
     process_curator_analysis, get_user_skill_progression, populate_initial_data,
@@ -100,8 +100,8 @@ async def lifespan(app: FastAPI):
             db.close()
         
         # Initialize all mentor agents
-        normal_mentor = BlackboxMentor("../agents/agent-mentor-strict.md")  # Use strict agent for now since no normal agent exists
-        strict_mentor = BlackboxMentor("../agents/agent-mentor-strict.md")
+        normal_mentor = BlackboxMentor(get_agent_path("agent-mentor-strict.md"))  # Use strict agent for now since no normal agent exists
+        strict_mentor = BlackboxMentor(get_agent_path("agent-mentor-strict.md"))
         
         # Initialize PydanticAI mentor agent if available
         if PYDANTIC_AI_AVAILABLE:
@@ -111,12 +111,12 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 print(f"⚠️ PydanticAI mentor agent initialization failed: {e}")
                 # Fallback to adapter for compatibility
-                pydantic_mentor = BlackboxMentorAdapter("../agents/agent-mentor-strict.md")
+                pydantic_mentor = BlackboxMentorAdapter(get_agent_path("agent-mentor-strict.md"))
                 print("✅ Using BlackboxMentorAdapter as fallback")
         else:
             print("⚠️ PydanticAI not available, using legacy mentor only")
         
-        curator_agent = BlackboxMentor("../agents/curator-agent.md")
+        curator_agent = BlackboxMentor(get_agent_path("curator-agent.md"))
         print("✅ All mentor agents initialized successfully")
         
         # Initialize vector store (Chroma)

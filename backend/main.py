@@ -11,6 +11,23 @@ import json
 from typing import Optional
 from pathlib import Path
 
+def get_agent_path(agent_filename: str) -> str:
+    """
+    Dynamically resolve agent file paths to work from both root and backend directories
+    """
+    # Try relative path first (when running from backend directory)
+    relative_path = Path(f"../agents/{agent_filename}")
+    if relative_path.exists():
+        return str(relative_path)
+    
+    # Try from root directory
+    root_path = Path(f"agents/{agent_filename}")
+    if root_path.exists():
+        return str(root_path)
+    
+    # If neither exists, return the relative path and let the error handling deal with it
+    return str(relative_path)
+
 def load_env_file():
     """Load environment variables from .env file"""
     env_file = Path(".env")
@@ -30,7 +47,13 @@ except ImportError as e:
     print(f"Warning: Could not import PydanticAI adapter ({e}), falling back to original BlackboxMentor")
     # Fallback to original implementation if PydanticAI is not available
     class BlackboxMentor:
-        def __init__(self, agent_file: str = "../agents/agent-mentor.md"):
+        def __init__(self, agent_file: str = None):
+            if agent_file is None:
+                agent_file = get_agent_path("agent-mentor.md")
+            else:
+                # If a specific file is provided, resolve it dynamically
+                filename = Path(agent_file).name
+                agent_file = get_agent_path(filename)
             self.api_url = "https://api.blackbox.ai/chat/completions"
             self.agent_file = agent_file
             self.system_prompt = self._load_system_prompt()
@@ -113,9 +136,9 @@ def choose_agent() -> tuple:
         try:
             choice = input("\nYour choice (1, 2, or 3): ").strip()
             if choice == "1":
-                return ("blackbox", "../agents/agent-mentor.md")
+                return ("blackbox", get_agent_path("agent-mentor.md"))
             elif choice == "2":
-                return ("blackbox", "../agents/agent-mentor-strict.md")
+                return ("blackbox", get_agent_path("agent-mentor-strict.md"))
             elif choice == "3":
                 return ("pydantic", None)
             else:
@@ -146,7 +169,7 @@ def main():
             except ImportError as e:
                 print(f"❌ PydanticAI mentor agent not available: {e}")
                 print("⚠️  Falling back to Blackbox Strict Mentor")
-                mentor = BlackboxMentor("../agents/agent-mentor-strict.md")
+                mentor = BlackboxMentor(get_agent_path("agent-mentor-strict.md"))
                 agent_name = "Strict Mentor Agent (Fallback)"
         else:
             raise ValueError(f"Unknown agent type: {agent_type}")

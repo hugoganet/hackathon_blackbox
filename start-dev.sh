@@ -44,7 +44,7 @@ lsof -ti:8000 | xargs kill -9 2>/dev/null || true
 echo ""
 echo "📦 Starting Backend API..."
 echo "------------------------"
-python3 api.py &
+python3 backend/api.py &
 BACKEND_PID=$!
 echo "✅ Backend started (PID: $BACKEND_PID)"
 echo "   URL: http://localhost:8000"
