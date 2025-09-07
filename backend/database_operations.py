@@ -14,7 +14,7 @@ import json
 from .database import (
     SessionLocal, Base, create_engine, engine,
     User, Conversation, Interaction, MemoryEntry, Skill, SkillHistory, RefDomain,
-    Flashcard, ReviewSession
+    RefLanguage, RefIntent, Flashcard, ReviewSession
 )
 
 # Re-export essential functions for backward compatibility
@@ -302,6 +302,96 @@ def populate_initial_data(db: Session):
     
     db.commit()
     print("✅ Initial domain data populated")
+
+# =============================================================================
+# REFERENCE TABLE OPERATIONS - RefLanguage and RefIntent
+# =============================================================================
+
+def create_or_get_language(db: Session, name: str, category: str = "programming") -> RefLanguage:
+    """
+    Create or get programming language reference
+    """
+    language = db.query(RefLanguage).filter(RefLanguage.name == name).first()
+    if not language:
+        language = RefLanguage(name=name, category=category)
+        db.add(language)
+        db.commit()
+        db.refresh(language)
+    return language
+
+def create_or_get_intent(db: Session, name: str, description: str = None) -> RefIntent:
+    """
+    Create or get interaction intent reference
+    """
+    intent = db.query(RefIntent).filter(RefIntent.name == name).first()
+    if not intent:
+        intent = RefIntent(
+            name=name, 
+            description=description or f"Auto-created intent: {name}"
+        )
+        db.add(intent)
+        db.commit()
+        db.refresh(intent)
+    return intent
+
+def get_all_languages(db: Session) -> List[RefLanguage]:
+    """
+    Get all programming languages
+    """
+    return db.query(RefLanguage).filter(RefLanguage.is_active == True).order_by(RefLanguage.name).all()
+
+def get_all_intents(db: Session) -> List[RefIntent]:
+    """
+    Get all interaction intents
+    """
+    return db.query(RefIntent).order_by(RefIntent.name).all()
+
+def populate_reference_data(db: Session):
+    """
+    Populate initial reference data for languages and intents
+    """
+    # Programming languages
+    languages = [
+        ("Python", "programming"),
+        ("JavaScript", "programming"),
+        ("TypeScript", "programming"),
+        ("Java", "programming"),
+        ("C++", "programming"),
+        ("C#", "programming"),
+        ("Go", "programming"),
+        ("Rust", "programming"),
+        ("PHP", "programming"),
+        ("Ruby", "programming"),
+        ("Swift", "programming"),
+        ("Kotlin", "programming"),
+        ("HTML", "markup"),
+        ("CSS", "styling"),
+        ("SQL", "query"),
+        ("Bash", "scripting"),
+        ("PowerShell", "scripting"),
+    ]
+    
+    for name, category in languages:
+        create_or_get_language(db, name, category)
+    
+    # Interaction intents
+    intents = [
+        ("debugging", "User is seeking help with fixing bugs or errors"),
+        ("concept_explanation", "User wants to understand programming concepts"),
+        ("code_review", "User is requesting feedback on their code"),
+        ("best_practices", "User is asking about coding standards and best practices"),
+        ("implementation_help", "User needs assistance implementing a feature"),
+        ("performance_optimization", "User wants to improve code performance"),
+        ("architecture_advice", "User is seeking architectural guidance"),
+        ("learning_path", "User wants guidance on what to learn next"),
+        ("tool_recommendation", "User is asking for tool or library suggestions"),
+        ("career_advice", "User seeks professional development guidance"),
+    ]
+    
+    for name, description in intents:
+        create_or_get_intent(db, name, description)
+    
+    print("✅ Reference data (languages and intents) populated")
 
 # =============================================================================
 # FLASHCARD CRUD OPERATIONS
