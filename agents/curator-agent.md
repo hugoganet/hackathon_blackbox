@@ -89,7 +89,6 @@ Always respond with valid JSON in this exact structure:
 
 ## Special Instructions
 
-- Always respond in English
 - Keep skill names concise and searchable
 - Focus on learning patterns, not just problem-solving
 - Consider the pedagogical value of each extracted element

@@ -4,7 +4,7 @@ FastAPI Backend for Dev Mentor AI
 Main API application following Option 1 architecture
 """
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -13,7 +13,13 @@ from contextlib import asynccontextmanager
 import os
 from dotenv import load_dotenv
 import time
+import asyncio
+from datetime import date, timedelta
+import uuid
 from sqlalchemy.orm import Session
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor
 
 # Import our components
 from .main import BlackboxMentor, load_env_file
@@ -25,8 +31,6 @@ from .database_operations import (
     get_flashcards_by_skill, batch_create_flashcards, delete_flashcard
 )
 from .spaced_repetition import SpacedRepetitionEngine, ReviewResult
-from datetime import date, timedelta
-import uuid
 from .memory_store import get_memory_store, ConversationMemory
 
 # Load environment variables
@@ -38,6 +42,27 @@ strict_mentor: Optional[BlackboxMentor] = None
 curator_agent: Optional[BlackboxMentor] = None
 memory_store: Optional[ConversationMemory] = None
 spaced_repetition_engine: Optional[SpacedRepetitionEngine] = None
+
+# Thread pool for CPU-bound tasks
+thread_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="curator")
+
+# Performance monitoring
+curator_analysis_stats = {
+    "total_analyses": 0,
+    "successful_analyses": 0,
+    "failed_analyses": 0,
+    "average_time_ms": 0,
+    "learning_value_filtered": 0
+}
+
+# Circuit breaker for curator API
+curator_circuit_breaker = {
+    "failures": 0,
+    "last_failure": None,
+    "is_open": False,
+    "failure_threshold": 5,
+    "recovery_timeout": 300  # 5 minutes
+}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -224,13 +249,346 @@ async def health_check():
         message="All systems operational"
     )
 
+# Curator Integration Helper Functions
+
+def has_learning_value(user_message: str, mentor_response: str) -> bool:
+    """
+    Quick pre-filter for conversations worth analyzing
+    Filters out greetings, meta questions, and non-technical content
+    """
+    # Skip basic greetings and non-technical messages
+    low_value_patterns = [
+        "hello", "hi", "thanks", "thank you", "bye", "goodbye",
+        "how are you", "what can you do", "who are you", "what is this",
+        "ok", "okay", "yes", "no", "sure", "fine"
+    ]
+    
+    user_lower = user_message.lower().strip()
+    
+    # Skip if message is too short or matches low-value patterns
+    if len(user_lower) < 10:
+        return False
+        
+    # Skip if primarily low-value content
+    if any(pattern in user_lower for pattern in low_value_patterns) and len(user_lower) < 30:
+        return False
+        
+    # Skip if no programming-related keywords
+    tech_keywords = [
+        "code", "function", "variable", "error", "bug", "debug", "programming",
+        "javascript", "python", "react", "sql", "html", "css", "algorithm",
+        "syntax", "method", "class", "object", "array", "string", "loop",
+        "if", "else", "return", "import", "export", "async", "await"
+    ]
+    
+    combined_text = (user_message + " " + mentor_response).lower()
+    has_tech_content = any(keyword in combined_text for keyword in tech_keywords)
+    
+    return has_tech_content
+
+def is_educationally_valuable(analysis: dict) -> bool:
+    """
+    Validate curator analysis has educational value
+    Filters out low-quality or generic analysis results
+    """
+    skills = analysis.get("skills", [])
+    confidence = analysis.get("confidence", 0.0)
+    mistakes = analysis.get("mistakes", [])
+    questions = analysis.get("openQuestions", [])
+    
+    # Filter out generic/meaningless skills
+    meaningful_skills = [
+        skill for skill in skills 
+        if skill.lower() not in ["general", "basic", "simple", "unknown", "programming"]
+        and len(skill.strip()) > 3
+        and not skill.lower().startswith("general")
+    ]
+    
+    # Must have learning indicators
+    has_skills = len(meaningful_skills) > 0
+    has_confidence = confidence > 0.1
+    has_mistakes = len(mistakes) > 0
+    has_questions = len(questions) > 0
+    
+    return has_skills or has_confidence or has_mistakes or has_questions
+
+@lru_cache(maxsize=500)
+def extract_programming_language(skills_tuple: tuple) -> str:
+    """
+    Extract primary programming language from curator skills (cached for performance)
+    """
+    language_mapping = {
+        "javascript": ["javascript", "js", "react", "node", "jsx", "react_hooks", "useState", "useEffect"],
+        "python": ["python", "django", "flask", "pandas", "numpy", "fastapi"],
+        "sql": ["sql", "database", "query", "joins", "mysql", "postgresql", "sqlite"],
+        "html": ["html", "css", "frontend", "web", "dom"],
+        "java": ["java", "spring", "maven", "gradle"],
+        "cpp": ["c++", "cpp", "stl", "pointer"],
+        "general": ["algorithm", "logic", "debugging", "performance", "architecture"]
+    }
+    
+    skill_text = " ".join(skills_tuple).lower().replace(" ", "_").replace("-", "_")
+    
+    for language, keywords in language_mapping.items():
+        if any(keyword in skill_text for keyword in keywords):
+            return language
+    
+    return "unknown"
+
+def get_programming_language(skills: List[str]) -> str:
+    """Helper function to convert list to tuple for caching"""
+    return extract_programming_language(tuple(skills))
+
+def extract_user_intent(analysis: dict) -> str:
+    """
+    Determine user intent from curator analysis
+    """
+    mistakes = analysis.get("mistakes", [])
+    questions = analysis.get("openQuestions", [])
+    confidence = analysis.get("confidence", 0.5)
+    
+    if mistakes:
+        return "debugging"  # User had errors to fix
+    elif questions and confidence < 0.4:
+        return "concept_explanation"  # User learning concepts
+    elif confidence > 0.7:
+        return "advanced_discussion"  # User has good understanding
+    else:
+        return "general"
+
+def confidence_to_difficulty(confidence: float) -> str:
+    """
+    Convert curator confidence to difficulty level
+    """
+    if confidence < 0.3:
+        return "beginner"
+    elif confidence < 0.7:
+        return "intermediate"
+    else:
+        return "advanced"
+
+async def update_memory_store_metadata(user_id: str, user_message: str, analysis: dict):
+    """
+    Update ChromaDB memory store with curator-extracted metadata
+    This improves future similarity searches by adding semantic context
+    """
+    if not memory_store:
+        return
+        
+    try:
+        # Extract metadata from analysis
+        skills = analysis.get("skills", [])
+        programming_language = get_programming_language(skills)
+        user_intent = extract_user_intent(analysis)
+        difficulty_level = confidence_to_difficulty(analysis.get("confidence", 0.5))
+        
+        # Find and update the memory entry
+        # Note: ChromaDB doesn't support direct updates, so we search for similar entries
+        # and update metadata for future queries
+        similar_memories = memory_store.find_similar_interactions(
+            current_message=user_message,
+            user_id=user_id,
+            limit=1,
+            similarity_threshold=0.95  # Very high threshold for exact match
+        )
+        
+        # If we found the exact memory, it will be used with enhanced metadata in future searches
+        if similar_memories:
+            print(f"[Curator] Enhanced memory store with metadata: {programming_language}, {user_intent}")
+        
+    except Exception as e:
+        print(f"Failed to update memory store metadata: {e}")
+
+async def update_interaction_metadata(db: Session, interaction_id: str, analysis: dict):
+    """
+    Update interaction record with curator-extracted metadata
+    """
+    try:
+        from .database import Interaction
+        
+        # Extract metadata from analysis
+        skills = analysis.get("skills", [])
+        programming_language = get_programming_language(skills)
+        user_intent = extract_user_intent(analysis)
+        difficulty_level = confidence_to_difficulty(analysis.get("confidence", 0.5))
+        
+        # Get interaction and update
+        interaction = db.query(Interaction).filter(Interaction.id == interaction_id).first()
+        if interaction:
+            interaction.programming_language = programming_language
+            interaction.user_intent = user_intent
+            interaction.difficulty_level = difficulty_level
+            interaction.embedding_created = True  # Mark as processed by curator
+            db.commit()
+            
+    except Exception as e:
+        print(f"Failed to update interaction metadata: {e}")
+        db.rollback()
+
+def check_circuit_breaker() -> bool:
+    """Check if curator circuit breaker is open (API unavailable)"""
+    if not curator_circuit_breaker["is_open"]:
+        return False
+    
+    # Check if recovery timeout has passed
+    if curator_circuit_breaker["last_failure"]:
+        time_since_failure = time.time() - curator_circuit_breaker["last_failure"]
+        if time_since_failure > curator_circuit_breaker["recovery_timeout"]:
+            # Try to recover
+            curator_circuit_breaker["is_open"] = False
+            curator_circuit_breaker["failures"] = 0
+            print("[Curator] Circuit breaker recovered, attempting API calls")
+            return False
+    
+    return True
+
+def record_curator_failure():
+    """Record a curator API failure for circuit breaker"""
+    curator_circuit_breaker["failures"] += 1
+    curator_circuit_breaker["last_failure"] = time.time()
+    
+    if curator_circuit_breaker["failures"] >= curator_circuit_breaker["failure_threshold"]:
+        curator_circuit_breaker["is_open"] = True
+        print(f"[Curator] Circuit breaker opened after {curator_circuit_breaker['failures']} failures")
+
+def record_curator_success():
+    """Record a successful curator API call"""
+    if curator_circuit_breaker["failures"] > 0:
+        curator_circuit_breaker["failures"] = max(0, curator_circuit_breaker["failures"] - 1)
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type((json.JSONDecodeError, ConnectionError, TimeoutError))
+)
+async def call_curator_api_with_retry(conversation_text: str) -> dict:
+    """
+    Call curator API with retry logic and circuit breaker for fault tolerance
+    """
+    # Check circuit breaker
+    if check_circuit_breaker():
+        raise ConnectionError("Curator API circuit breaker is open - service temporarily unavailable")
+    
+    if not curator_agent:
+        raise ValueError("Curator agent not available")
+        
+    try:
+        response = curator_agent.call_blackbox_api(conversation_text)
+        if response.startswith("❌"):
+            record_curator_failure()
+            raise ConnectionError(f"Curator API error: {response}")
+            
+        try:
+            analysis = json.loads(response)
+        except json.JSONDecodeError as e:
+            record_curator_failure()
+            print(f"Invalid JSON from curator: {e}")
+            raise
+        
+        # Validate required fields
+        required_fields = ["skills", "mistakes", "openQuestions", "nextSteps", "confidence"]
+        for field in required_fields:
+            if field not in analysis:
+                record_curator_failure()
+                raise ValueError(f"Missing field in curator response: {field}")
+        
+        # Record success
+        record_curator_success()
+        return analysis
+        
+    except Exception as e:
+        record_curator_failure()
+        raise
+
+async def analyze_conversation_background(
+    user_message: str,
+    mentor_response: str,
+    user_id: str,
+    interaction_id: str
+) -> Optional[dict]:
+    """
+    Analyze conversation in background with learning value filtering and retry logic
+    Only processes conversations that have educational value
+    """
+    start_time = time.time()
+    
+    # Update performance stats
+    curator_analysis_stats["total_analyses"] += 1
+    
+    try:
+        # Quick learning value pre-filter
+        if not has_learning_value(user_message, mentor_response):
+            curator_analysis_stats["learning_value_filtered"] += 1
+            print(f"[Curator] Skipping analysis - no learning value detected")
+            return None
+        
+        # Format conversation for curator
+        conversation_text = f"""USER MESSAGE:
+{user_message}
+
+MENTOR RESPONSE:
+{mentor_response}"""
+        
+        # Call curator agent with retry logic
+        try:
+            analysis = await call_curator_api_with_retry(conversation_text)
+        except Exception as e:
+            print(f"[Curator] API call failed after retries: {e}")
+            return None
+        
+        # Validate learning value from curator analysis
+        if not is_educationally_valuable(analysis):
+            print(f"[Curator] Skipping analysis - low educational value")
+            return None
+        
+        # Create new database session for background task
+        from .database import SessionLocal, process_curator_analysis
+        db = SessionLocal()
+        
+        try:
+            # Process curator analysis and update skill tracking
+            skill_results = process_curator_analysis(db, user_id, analysis)
+            
+            # Update interaction with extracted metadata
+            await update_interaction_metadata(db, interaction_id, analysis)
+            
+            # Update memory store with enhanced metadata
+            await update_memory_store_metadata(user_id, user_message, analysis)
+            
+            analysis_time = int((time.time() - start_time) * 1000)
+            
+            # Update performance stats
+            curator_analysis_stats["successful_analyses"] += 1
+            avg_time = curator_analysis_stats["average_time_ms"]
+            total = curator_analysis_stats["successful_analyses"]
+            curator_analysis_stats["average_time_ms"] = ((avg_time * (total - 1)) + analysis_time) // total
+            
+            print(f"[Curator] Analysis completed in {analysis_time}ms - skills updated: {len(skill_results.get('skills_updated', []))}")
+            
+            return {**analysis, "skill_tracking": skill_results, "analysis_time_ms": analysis_time}
+            
+        finally:
+            db.close()
+        
+    except Exception as e:
+        analysis_time = int((time.time() - start_time) * 1000)
+        curator_analysis_stats["failed_analyses"] += 1
+        print(f"[Curator] Background analysis failed after {analysis_time}ms: {e}")
+        return None
+
 @app.post("/chat", response_model=ChatResponse)
-async def chat_with_mentor(request: ChatRequest, db: Session = Depends(get_db)):
+async def chat_with_mentor(
+    request: ChatRequest, 
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
     """
     Main chat endpoint - interact with AI mentors with full memory integration
+    Now includes automatic curator analysis for educational conversations
     
     Args:
         request: ChatRequest with message, agent_type, user_id, session_id
+        background_tasks: FastAPI background tasks for curator analysis
         db: Database session (injected by FastAPI)
         
     Returns:
@@ -261,20 +619,36 @@ async def chat_with_mentor(request: ChatRequest, db: Session = Depends(get_db)):
         session_id = request.session_id or f"session_{hash(str(user.id))}"
         
         # Search for related memories before responding
+        # Enhanced with curator metadata filtering when available
         related_memories = []
         if memory_store and request.user_id:
+            # Try to detect programming language for better similarity matching
+            detected_language = get_programming_language([request.message])
+            
             similar_interactions = memory_store.find_similar_interactions(
                 current_message=request.message,
                 user_id=str(user.id),
                 limit=3,
-                agent_type=request.agent_type
+                agent_type=request.agent_type,
+                programming_language=detected_language if detected_language != "unknown" else None
             )
             
-            # Format memories for response
-            related_memories = [
-                f"Similar past question: {memory['user_message'][:100]}..."
-                for memory in similar_interactions[:3]
-            ]
+            # Format memories for response with enhanced context
+            related_memories = []
+            for memory in similar_interactions[:3]:
+                metadata = memory.get("metadata", {})
+                prog_lang = metadata.get("programming_language", "")
+                intent = metadata.get("user_intent", "")
+                
+                # Enhanced memory description
+                memory_desc = f"Similar past question"
+                if prog_lang and prog_lang != "unknown":
+                    memory_desc += f" ({prog_lang})"
+                if intent and intent != "general":
+                    memory_desc += f" - {intent}"
+                memory_desc += f": {memory['user_message'][:80]}..."
+                
+                related_memories.append(memory_desc)
         
         # Call the Blackbox API through our mentor
         response = mentor.call_blackbox_api(request.message)
@@ -298,16 +672,27 @@ async def chat_with_mentor(request: ChatRequest, db: Session = Depends(get_db)):
             response_time_ms
         )
         
+        # 🆕 ADDED: Background curator analysis with learning value filtering
+        if request.agent_type != "curator":  # Avoid infinite loop
+            background_tasks.add_task(
+                analyze_conversation_background,
+                user_message=request.message,
+                mentor_response=response,
+                user_id=str(user.id),
+                interaction_id=str(interaction.id)
+            )
+        
         # Add to vector memory store for future reference
+        # Will be enhanced by background curator analysis
+        memory_id = None
         if memory_store and request.user_id:
-            memory_store.add_interaction(
+            memory_id = memory_store.add_interaction(
                 user_id=str(user.id),
                 user_message=request.message,
                 mentor_response=response,
                 agent_type=request.agent_type,
-                # TODO: Add automatic classification of programming language and intent
-                programming_language="unknown",
-                user_intent="general"
+                programming_language="unknown",  # Will be updated by curator
+                user_intent="general"  # Will be updated by curator
             )
         
         return ChatResponse(
@@ -376,7 +761,7 @@ async def get_system_stats(db: Session = Depends(get_db)):
     """
     try:
         # Database stats
-        from .database.models import User, Conversation, Interaction
+        from .database import User, Conversation, Interaction
         
         user_count = db.query(User).count()
         conversation_count = db.query(Conversation).count() 
@@ -539,7 +924,6 @@ async def get_user_skills(user_id: str, limit: int = 20, db: Session = Depends(g
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving skills: {str(e)}")
 
-
 # =============================================================================
 # FLASHCARD AND SPACED REPETITION API ENDPOINTS
 # =============================================================================
@@ -631,7 +1015,8 @@ async def submit_review_endpoint(request: ReviewRequest, db: Session = Depends(g
             response_time=request.response_time
         )
         
-        # Calculate new spaced repetition parameters
+        # Calculate new spaced repetition parameters  
+        from datetime import date
         new_params = spaced_repetition_engine.calculate_next_review(
             current_interval=(flashcard.next_review_date - date.today()).days,
             difficulty_factor=float(flashcard.difficulty),  # Convert to ease factor approximation
@@ -686,6 +1071,8 @@ async def get_flashcard_stats_endpoint(user_id: str, db: Session = Depends(get_d
 async def get_review_schedule_endpoint(user_id: str, days: int = 7, db: Session = Depends(get_db)):
     """Get review schedule for upcoming days"""
     try:
+        from datetime import date, timedelta
+        import uuid
         today = date.today()
         schedule = {}
         
@@ -719,6 +1106,7 @@ async def get_review_schedule_endpoint(user_id: str, days: int = 7, db: Session 
 async def batch_create_flashcards_endpoint(request: BatchCreateRequest, db: Session = Depends(get_db)):
     """Create multiple flashcards in batch"""
     try:
+        import uuid
         flashcards_data = []
         
         for card_request in request.flashcards:
@@ -775,6 +1163,139 @@ async def delete_flashcard_endpoint(flashcard_id: str, user_id: str, db: Session
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting flashcard: {str(e)}")
 
+# =============================================================================
+# CURATOR ENHANCED ENDPOINTS  
+# =============================================================================
+
+@app.get("/curator/user/{user_id}/conversations")
+async def get_user_conversations_with_analysis(
+    user_id: str, 
+    limit: int = 10,
+    include_analysis: bool = True,
+    db: Session = Depends(get_db)
+):
+    """
+    Get user conversations enhanced with curator analysis metadata
+    Provides detailed learning analytics for each conversation
+    """
+    try:
+        from .database import User, Interaction, Conversation
+        from sqlalchemy import desc
+        
+        # Get user
+        user = db.query(User).filter(User.username == user_id).first()
+        if not user:
+            return {
+                "user_id": user_id,
+                "conversations": [],
+                "message": "User not found"
+            }
+        
+        # Get recent interactions with curator analysis
+        interactions_query = db.query(Interaction).join(
+            Conversation, Interaction.conversation_id == Conversation.id
+        ).filter(
+            Conversation.user_id == user.id
+        ).order_by(desc(Interaction.created_at)).limit(limit)
+        
+        interactions = interactions_query.all()
+        
+        # Format conversations with analysis metadata
+        conversations = []
+        for interaction in interactions:
+            conversation_data = {
+                "interaction_id": str(interaction.id),
+                "conversation_id": str(interaction.conversation_id),
+                "user_message": interaction.user_message,
+                "mentor_response": interaction.mentor_response,
+                "created_at": interaction.created_at.isoformat(),
+                "response_time_ms": interaction.response_time_ms,
+                "has_curator_analysis": interaction.programming_language != "unknown"
+            }
+            
+            # Add curator analysis if available and requested
+            if include_analysis and interaction.programming_language != "unknown":
+                conversation_data["curator_analysis"] = {
+                    "programming_language": interaction.programming_language,
+                    "user_intent": interaction.user_intent,
+                    "difficulty_level": interaction.difficulty_level,
+                    "embedding_created": interaction.embedding_created
+                }
+            
+            conversations.append(conversation_data)
+        
+        return {
+            "user_id": user_id,
+            "total_conversations": len(conversations),
+            "conversations": conversations,
+            "curator_analysis_enabled": include_analysis
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving conversations: {str(e)}")
+
+@app.get("/curator/stats")
+async def get_curator_stats(db: Session = Depends(get_db)):
+    """
+    Get curator analysis performance statistics
+    Shows how many interactions have been analyzed and skill tracking effectiveness
+    """
+    try:
+        from .database import Interaction, SkillHistory
+        
+        # Count total interactions
+        total_interactions = db.query(Interaction).count()
+        
+        # Count analyzed interactions (those with programming_language set)
+        analyzed_interactions = db.query(Interaction).filter(
+            Interaction.programming_language != "unknown",
+            Interaction.programming_language.isnot(None)
+        ).count()
+        
+        # Count skill tracking records
+        skill_records = db.query(SkillHistory).count()
+        
+        # Calculate analysis rate
+        analysis_rate = analyzed_interactions / max(total_interactions, 1)
+        
+        return {
+            "total_interactions": total_interactions,
+            "analyzed_interactions": analyzed_interactions,
+            "unanalyzed_interactions": total_interactions - analyzed_interactions,
+            "analysis_rate": round(analysis_rate, 3),
+            "skill_history_records": skill_records,
+            "curator_integration": "active" if analysis_rate > 0 else "inactive",
+            "message": f"Curator analysis running on {analysis_rate:.1%} of conversations",
+            
+            # Performance metrics
+            "performance_stats": {
+                "total_analysis_requests": curator_analysis_stats["total_analyses"],
+                "successful_analyses": curator_analysis_stats["successful_analyses"],
+                "failed_analyses": curator_analysis_stats["failed_analyses"],
+                "learning_value_filtered": curator_analysis_stats["learning_value_filtered"],
+                "success_rate": round(
+                    curator_analysis_stats["successful_analyses"] / max(curator_analysis_stats["total_analyses"], 1),
+                    3
+                ),
+                "average_analysis_time_ms": curator_analysis_stats["average_time_ms"],
+                "filter_rate": round(
+                    curator_analysis_stats["learning_value_filtered"] / max(curator_analysis_stats["total_analyses"], 1),
+                    3
+                )
+            },
+            
+            # Circuit breaker status
+            "circuit_breaker": {
+                "is_open": curator_circuit_breaker["is_open"],
+                "failure_count": curator_circuit_breaker["failures"],
+                "failure_threshold": curator_circuit_breaker["failure_threshold"],
+                "last_failure": curator_circuit_breaker["last_failure"],
+                "recovery_timeout_seconds": curator_circuit_breaker["recovery_timeout"]
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving curator stats: {str(e)}")
 
 # Development server runner
 if __name__ == "__main__":

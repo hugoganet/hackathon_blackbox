@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, date
 
 # Import database models
-from database import User, Conversation, Interaction, get_user_by_username, create_conversation, save_interaction
+from backend.database import User, Conversation, Interaction, get_user_by_username, create_conversation, save_interaction
 
 class MockBlackboxResponse:
     """Mock response from Blackbox AI API"""

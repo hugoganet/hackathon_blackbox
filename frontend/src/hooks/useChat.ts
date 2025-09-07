@@ -1,153 +1,99 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { Message, AgentType, ChatRequest } from '../types';
-import { chatApi } from '../services/api';
+import { useState, useCallback } from 'react';
+import { ChatMessage, ChatRequest, LoadingState, ErrorState } from '../types';
+import { apiService } from '../services/api';
 
-interface UseChatOptions {
-  initialAgent?: AgentType;
-  userId?: string;
-}
+export const useChat = () => {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loading, setLoading] = useState<LoadingState>({ isLoading: false });
+  const [error, setError] = useState<ErrorState>({ hasError: false });
+  const [sessionId, setSessionId] = useState<string>('');
 
-interface UseChatReturn {
-  messages: Message[];
-  currentAgent: AgentType;
-  isLoading: boolean;
-  error: string | null;
-  sessionId: string | null;
-  sendMessage: (content: string) => Promise<void>;
-  setCurrentAgent: (agent: AgentType) => void;
-  clearMessages: () => void;
-  clearError: () => void;
-}
-
-const useChat = (options: UseChatOptions = {}): UseChatReturn => {
-  const { initialAgent = 'normal', userId } = options;
-  
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [currentAgent, setCurrentAgent] = useState<AgentType>(initialAgent);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  
-  // Keep track of message IDs to avoid duplicates
-  const messageIdRef = useRef(0);
-  
-  const generateMessageId = () => {
-    messageIdRef.current += 1;
-    return `msg-${Date.now()}-${messageIdRef.current}`;
-  };
-
-  const addMessage = useCallback((message: Omit<Message, 'id'>) => {
-    const newMessage: Message = {
-      ...message,
-      id: generateMessageId(),
-    };
-    
-    setMessages(prev => [...prev, newMessage]);
-    return newMessage;
-  }, []);
-
-  const sendMessage = useCallback(async (content: string) => {
-    if (!content.trim() || isLoading) return;
-
-    // Clear any previous errors
-    setError(null);
-    setIsLoading(true);
+  const sendMessage = useCallback(async (
+    content: string,
+    agentType: 'normal' | 'strict' = 'normal',
+    userId?: string
+  ) => {
+    if (!content.trim()) return;
 
     // Add user message immediately
-    const userMessage = addMessage({
+    const userMessage: ChatMessage = {
+      id: `user_${Date.now()}`,
       content: content.trim(),
-      isUser: true,
-      timestamp: new Date(),
-    });
+      role: 'user',
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setLoading({ isLoading: true, message: 'Mentor is thinking...' });
+    setError({ hasError: false });
 
     try {
       const request: ChatRequest = {
         message: content.trim(),
-        agent_type: currentAgent,
+        agent_type: agentType,
         user_id: userId,
-        session_id: sessionId || undefined,
+        session_id: sessionId
       };
 
-      const response = await chatApi.sendMessage(request);
+      const response = await apiService.sendMessage(request);
 
-      // Update session ID if we got one back
-      if (response.session_id && response.session_id !== sessionId) {
+      // Update session ID if it changed
+      if (response.session_id !== sessionId) {
         setSessionId(response.session_id);
       }
 
-      // Add AI response message
-      addMessage({
+      // Add assistant message
+      const assistantMessage: ChatMessage = {
+        id: `assistant_${Date.now()}`,
         content: response.response,
-        isUser: false,
-        timestamp: new Date(),
-        agentType: response.agent_type,
-      });
+        role: 'assistant',
+        timestamp: new Date()
+      };
 
+      setMessages(prev => [...prev, assistantMessage]);
     } catch (err) {
-      console.error('Failed to send message:', err);
-      
-      const errorMessage = err instanceof Error 
-        ? err.message 
-        : 'Failed to send message. Please try again.';
-      
-      setError(errorMessage);
-      
+      const errorMessage = err instanceof Error ? err.message : 'Failed to send message';
+      setError({ hasError: true, message: errorMessage });
+
       // Add error message to chat
-      addMessage({
+      const errorChatMessage: ChatMessage = {
+        id: `error_${Date.now()}`,
         content: `❌ Error: ${errorMessage}`,
-        isUser: false,
-        timestamp: new Date(),
-        agentType: currentAgent,
-      });
+        role: 'assistant',
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, errorChatMessage]);
     } finally {
-      setIsLoading(false);
+      setLoading({ isLoading: false });
     }
-  }, [currentAgent, userId, sessionId, isLoading, addMessage]);
+  }, [sessionId]);
 
-  const clearMessages = useCallback(() => {
+  const clearChat = useCallback(() => {
     setMessages([]);
-    setSessionId(null);
-    setError(null);
-    messageIdRef.current = 0;
+    setSessionId('');
+    setError({ hasError: false });
   }, []);
 
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
-
-  const handleAgentChange = useCallback((agent: AgentType) => {
-    setCurrentAgent(agent);
-    // Optionally clear error when switching agents
-    setError(null);
-  }, []);
-
-  // Add welcome message when agent changes
-  useEffect(() => {
-    if (messages.length === 0) {
-      const welcomeMessage = currentAgent === 'strict'
-        ? "👋 Hi! I'm your Strict Mentor. I'll help you learn by guiding you to discover solutions yourself. I won't give direct answers, but I'll ask questions and give hints to help you think through problems. What would you like to work on?"
-        : "👋 Hello! I'm your AI Mentor. I'm here to help you with development questions, provide detailed explanations, and guide you through learning. What can I help you with today?";
-
-      addMessage({
-        content: welcomeMessage,
-        isUser: false,
-        timestamp: new Date(),
-        agentType: currentAgent,
-      });
+  const retryLastMessage = useCallback(() => {
+    if (messages.length >= 2) {
+      const lastUserMessage = messages[messages.length - 2];
+      if (lastUserMessage.role === 'user') {
+        // Remove the last two messages (user + error response)
+        setMessages(prev => prev.slice(0, -2));
+        // Resend the message
+        sendMessage(lastUserMessage.content);
+      }
     }
-  }, [currentAgent, messages.length, addMessage]);
+  }, [messages, sendMessage]);
 
   return {
     messages,
-    currentAgent,
-    isLoading,
+    loading,
     error,
     sessionId,
     sendMessage,
-    setCurrentAgent: handleAgentChange,
-    clearMessages,
-    clearError,
+    clearChat,
+    retryLastMessage
   };
 };
-
-export default useChat;

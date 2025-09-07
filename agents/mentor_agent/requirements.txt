@@ -1,0 +1,30 @@
+# Core dependencies for Mentor Agent
+pydantic-ai>=0.1.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+
+# LLM Provider
+openai>=1.0.0
+
+# Database and ORM
+sqlalchemy>=2.0.0
+asyncpg>=0.28.0
+psycopg2-binary>=2.9.0
+
+# Vector Database and Embeddings
+chromadb>=0.4.0
+sentence-transformers>=2.2.0
+
+# Async utilities
+httpx>=0.25.0
+aiofiles>=23.0.0
+
+# Development and testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+ruff>=0.1.0
+
+# Monitoring and logging
+loguru>=0.7.0

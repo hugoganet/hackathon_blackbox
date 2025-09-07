@@ -1,197 +1,23 @@
 """
-Database models and configuration for Dev Mentor AI
-Uses PostgreSQL with SQLAlchemy for Railway deployment
+Database operations for Dev Mentor AI
+Includes all CRUD operations for users, conversations, skills, and flashcards
 """
 
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Date, UniqueConstraint, Float, CheckConstraint
-from sqlalchemy.orm import sessionmaker, Session, relationship
-from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime, date, timedelta
+from sqlalchemy.orm import Session
+from sqlalchemy import and_, desc, func, or_
+from typing import List, Optional, Dict, Any, Generator
+from datetime import date, datetime, timedelta
 import uuid
-import os
-from typing import Generator, List, Optional, Dict
+import json
 
-# Import models from the comprehensive models file
-from .database.models import (
-    Base, User, Conversation, Interaction, MemoryEntry, RefDomain, 
-    Skill, SkillHistory, Flashcard, ReviewSession
+# Import all models from the main database module
+from .database import (
+    SessionLocal, Base, create_engine, engine,
+    User, Conversation, Interaction, MemoryEntry, Skill, SkillHistory, RefDomain,
+    Flashcard, ReviewSession
 )
 
-# Database configuration
-# Railway automatically provides DATABASE_URL environment variable
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dev_mentor.db")  # Fallback to SQLite for local dev
-
-# Check if we're using PostgreSQL or SQLite
-is_postgres = DATABASE_URL.startswith("postgresql")
-
-# SQLAlchemy setup
-if is_postgres:
-    # PostgreSQL configuration
-    engine = create_engine(
-        DATABASE_URL,
-        pool_pre_ping=True,  # Verify connections before use
-        pool_recycle=300,    # Recycle connections every 5 minutes
-    )
-else:
-    # SQLite configuration (for local development)
-    engine = create_engine(DATABASE_URL)
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Database Models
-
-# Define UUID column type based on database
-if is_postgres:
-    UUIDType = UUID(as_uuid=True)
-else:
-    # For SQLite, use String to store UUID as text
-    UUIDType = String(36)
-
-class User(Base):
-    """
-    User model - represents junior developers using the platform
-    """
-    __tablename__ = "users"
-    
-    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
-    username = Column(String(50), unique=True, nullable=False)
-    email = Column(String(255), unique=True, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    is_active = Column(Boolean, default=True)
-    
-    # Relationships
-    conversations = relationship("Conversation", back_populates="user")
-    skill_history = relationship("SkillHistory", back_populates="user")
-
-class Conversation(Base):
-    """
-    Conversation model - represents a chat session between user and mentor
-    """
-    __tablename__ = "conversations"
-    
-    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUIDType, ForeignKey("users.id"), nullable=False)
-    session_id = Column(String(255), nullable=False, index=True)
-    agent_type = Column(String(20), nullable=False)  # "normal" or "strict"
-    title = Column(String(255), nullable=True)  # Optional conversation title
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    is_active = Column(Boolean, default=True)
-    
-    # Relationships
-    user = relationship("User", back_populates="conversations")
-    interactions = relationship("Interaction", back_populates="conversation")
-
-class Interaction(Base):
-    """
-    Interaction model - individual message exchanges within a conversation
-    This data will be used to create embeddings for the vector store
-    """
-    __tablename__ = "interactions"
-    
-    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
-    conversation_id = Column(UUIDType, ForeignKey("conversations.id"), nullable=False)
-    
-    # Message content
-    user_message = Column(Text, nullable=False)
-    mentor_response = Column(Text, nullable=False)
-    
-    # Context for vector store
-    user_intent = Column(String(100), nullable=True)  # Classified intent (e.g., "debugging", "concept_explanation")
-    programming_language = Column(String(50), nullable=True)  # e.g., "javascript", "python"
-    difficulty_level = Column(String(20), nullable=True)  # e.g., "beginner", "intermediate"
-    
-    # Metadata
-    response_time_ms = Column(Integer, nullable=True)  # API response time for monitoring
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Vector store integration
-    embedding_created = Column(Boolean, default=False)  # Track if embedding was created
-    
-    # Relationship
-    conversation = relationship("Conversation", back_populates="interactions")
-
-class MemoryEntry(Base):
-    """
-    Memory Entry model - tracks patterns and insights about user learning
-    Used alongside vector store for personalized mentoring
-    """
-    __tablename__ = "memory_entries"
-    
-    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUIDType, ForeignKey("users.id"), nullable=False)
-    
-    # Learning insights
-    concept = Column(String(100), nullable=False)  # e.g., "react_hooks", "async_await"
-    mastery_level = Column(Integer, default=1)  # 1-5 scale of understanding
-    common_mistakes = Column(Text, nullable=True)  # JSON array of common errors
-    learning_style = Column(String(50), nullable=True)  # e.g., "visual", "hands_on"
-    
-    # Tracking
-    first_encountered = Column(DateTime, default=datetime.utcnow)
-    last_practiced = Column(DateTime, default=datetime.utcnow)
-    practice_count = Column(Integer, default=1)
-    
-    # Vector store reference
-    vector_id = Column(String(255), nullable=True)  # Reference to Chroma embedding
-
-class RefDomain(Base):
-    """
-    Reference table for learning domains
-    """
-    __tablename__ = "ref_domains"
-    
-    id_domain = Column(Integer, primary_key=True)
-    name = Column(String(50), nullable=False, unique=True)
-    description = Column(Text)
-    display_order = Column(Integer, default=0)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Relationship to skills
-    skills = relationship("Skill", back_populates="domain")
-
-class Skill(Base):
-    """
-    Skills table - represents learning competencies to be mastered
-    """
-    __tablename__ = "skills"
-    
-    id_skill = Column(Integer, primary_key=True)
-    name = Column(String(100), nullable=False, unique=True)
-    description = Column(Text)
-    id_domain = Column(Integer, ForeignKey("ref_domains.id_domain"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    domain = relationship("RefDomain", back_populates="skills")
-    skill_history = relationship("SkillHistory", back_populates="skill")
-
-class SkillHistory(Base):
-    """
-    Skill History table - tracks daily snapshots of user skill progression
-    Used by spaced repetition algorithm to optimize learning
-    """
-    __tablename__ = "skill_history"
-    
-    id_history = Column(UUIDType, primary_key=True, default=uuid.uuid4)
-    id_user = Column(UUIDType, ForeignKey("users.id"), nullable=False)
-    id_skill = Column(Integer, ForeignKey("skills.id_skill"), nullable=False)
-    mastery_level = Column(Integer, nullable=False, default=1)
-    snapshot_date = Column(Date, nullable=False, default=date.today)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    user = relationship("User", back_populates="skill_history")
-    skill = relationship("Skill", back_populates="skill_history")
-    
-    # Table constraints
-    __table_args__ = (
-        UniqueConstraint('id_user', 'id_skill', 'snapshot_date', name='skill_history_unique_daily'),
-    )
-
-# Database utility functions
-
+# Re-export essential functions for backward compatibility
 def get_db() -> Generator[Session, None, None]:
     """
     Dependency function for FastAPI to get database session
@@ -227,18 +53,12 @@ def create_conversation(db: Session, user_id: str, session_id: str, agent_type: 
     """
     Create new conversation record
     """
-    # Handle UUID properly for both PostgreSQL and SQLite
-    if is_postgres:
-        # PostgreSQL: convert string to UUID object
-        if isinstance(user_id, str):
-            user_id = uuid.UUID(user_id)
-        conversation_id = uuid.uuid4()
-    else:
-        # SQLite: keep as string
-        conversation_id = str(uuid.uuid4())
+    # PostgreSQL: convert string to UUID object
+    if isinstance(user_id, str):
+        user_id = uuid.UUID(user_id)
     
     conversation = Conversation(
-        id=conversation_id,
+        id=uuid.uuid4(),
         user_id=user_id,
         session_id=session_id,
         agent_type=agent_type
@@ -258,18 +78,12 @@ def save_interaction(
     """
     Save interaction to database for memory and analytics
     """
-    # Handle UUID properly for both PostgreSQL and SQLite
-    if is_postgres:
-        # PostgreSQL: convert string to UUID object
-        if isinstance(conversation_id, str):
-            conversation_id = uuid.UUID(conversation_id)
-        interaction_id = uuid.uuid4()
-    else:
-        # SQLite: keep as string
-        interaction_id = str(uuid.uuid4())
+    # PostgreSQL: convert string to UUID object
+    if isinstance(conversation_id, str):
+        conversation_id = uuid.UUID(conversation_id)
     
     interaction = Interaction(
-        id=interaction_id,
+        id=uuid.uuid4(),
         conversation_id=conversation_id,
         user_message=user_message,
         mentor_response=mentor_response,
@@ -280,7 +94,9 @@ def save_interaction(
     db.refresh(interaction)
     return interaction
 
-# Skill tracking and mapping functions
+# =============================================================================
+# SKILL TRACKING OPERATIONS
+# =============================================================================
 
 def create_or_update_skill(db: Session, skill_name: str, description: str = None, domain_name: str = "SYNTAX") -> Skill:
     """
@@ -319,11 +135,8 @@ def update_skill_history(db: Session, user_id: str, skill_name: str, confidence:
     # Get or create skill
     skill = create_or_update_skill(db, skill_name, domain_name=domain_name)
     
-    # Get user UUID properly
-    if is_postgres:
-        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
-    else:
-        user_uuid = user_id
+    # PostgreSQL: convert string to UUID object
+    user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
     
     # Check for existing skill history today
     today = date.today()
@@ -342,13 +155,8 @@ def update_skill_history(db: Session, user_id: str, skill_name: str, confidence:
         return existing_history
     else:
         # Create new skill history entry
-        if is_postgres:
-            history_id = uuid.uuid4()
-        else:
-            history_id = str(uuid.uuid4())
-        
         skill_history = SkillHistory(
-            id_history=history_id,
+            id_history=uuid.uuid4(),
             id_user=user_uuid,
             id_skill=skill.id_skill,
             mastery_level=mastery_level,
@@ -363,10 +171,8 @@ def get_user_skill_progression(db: Session, user_id: str, limit: int = 20) -> Li
     """
     Get user's skill progression history
     """
-    if is_postgres:
-        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
-    else:
-        user_uuid = user_id
+    # PostgreSQL: convert string to UUID object
+    user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
     
     # Query skill history with skill names
     skill_histories = db.query(SkillHistory, Skill.name, RefDomain.name.label("domain_name")).join(
@@ -497,31 +303,33 @@ def populate_initial_data(db: Session):
     db.commit()
     print("✅ Initial domain data populated")
 
-# Flashcard and Spaced Repetition Functions
+# =============================================================================
+# FLASHCARD CRUD OPERATIONS
+# =============================================================================
 
 def create_flashcard(
-    db: Session, 
+    db: Session,
     user_id: str,
-    question: str, 
-    answer: str, 
+    question: str,
+    answer: str,
     difficulty: int = 1,
     card_type: str = "concept",
     skill_id: Optional[int] = None,
     interaction_id: Optional[str] = None,
     next_review_date: Optional[date] = None
 ) -> Flashcard:
-    """Create a new flashcard"""
-    if next_review_date is None:
-        next_review_date = date.today() + timedelta(days=1)
-    
+    """
+    Create a new flashcard
+    """
     flashcard = Flashcard(
+        id=uuid.uuid4(),
         question=question,
         answer=answer,
         difficulty=difficulty,
         card_type=card_type,
-        next_review_date=next_review_date,
         skill_id=skill_id,
-        interaction_id=uuid.UUID(interaction_id) if interaction_id else None
+        interaction_id=uuid.UUID(interaction_id) if interaction_id else None,
+        next_review_date=next_review_date or date.today()
     )
     
     db.add(flashcard)
@@ -529,50 +337,58 @@ def create_flashcard(
     db.refresh(flashcard)
     return flashcard
 
+def get_flashcard_by_id(db: Session, flashcard_id: str) -> Optional[Flashcard]:
+    """
+    Get flashcard by ID
+    """
+    flashcard_uuid = uuid.UUID(flashcard_id) if isinstance(flashcard_id, str) else flashcard_id
+    return db.query(Flashcard).filter(Flashcard.id == flashcard_uuid).first()
 
 def get_due_flashcards(db: Session, user_id: str, limit: int = 20) -> List[Flashcard]:
-    """Get flashcards due for review for a specific user"""
+    """
+    Get flashcards due for review by user
+    """
+    user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
     today = date.today()
     
-    # Get flashcards that are due for review
-    flashcards = db.query(Flashcard)\
-        .join(Interaction, Flashcard.interaction_id == Interaction.id, isouter=True)\
-        .join(Conversation, Interaction.conversation_id == Conversation.id, isouter=True)\
-        .filter(
+    # Get flashcards due for review through interactions and conversations
+    due_flashcards = db.query(Flashcard).join(
+        Interaction, Flashcard.interaction_id == Interaction.id, isouter=True
+    ).join(
+        Conversation, Interaction.conversation_id == Conversation.id, isouter=True
+    ).filter(
+        and_(
             Flashcard.next_review_date <= today,
-            Conversation.user_id == uuid.UUID(user_id) if user_id else True
-        )\
-        .order_by(Flashcard.next_review_date)\
-        .limit(limit)\
-        .all()
+            or_(
+                Conversation.user_id == user_uuid,
+                Flashcard.interaction_id == None  # Cards not linked to interactions
+            )
+        )
+    ).order_by(Flashcard.next_review_date).limit(limit).all()
     
-    return flashcards
-
-
-def get_flashcard_by_id(db: Session, flashcard_id: str) -> Optional[Flashcard]:
-    """Get a flashcard by ID"""
-    return db.query(Flashcard)\
-        .filter(Flashcard.id == uuid.UUID(flashcard_id))\
-        .first()
-
+    return due_flashcards
 
 def update_flashcard_schedule(
-    db: Session, 
-    flashcard_id: str, 
+    db: Session,
+    flashcard_id: str,
     next_review_date: date,
     difficulty: float,
     review_count: int
-) -> Optional[Flashcard]:
-    """Update flashcard review schedule"""
-    flashcard = get_flashcard_by_id(db, flashcard_id)
+) -> Flashcard:
+    """
+    Update flashcard scheduling parameters
+    """
+    flashcard_uuid = uuid.UUID(flashcard_id) if isinstance(flashcard_id, str) else flashcard_id
+    flashcard = db.query(Flashcard).filter(Flashcard.id == flashcard_uuid).first()
+    
     if flashcard:
         flashcard.next_review_date = next_review_date
-        flashcard.difficulty = min(5, max(1, int(difficulty)))  # Keep in 1-5 range
+        flashcard.difficulty = int(difficulty)  # Convert ease factor to difficulty
         flashcard.review_count = review_count
         db.commit()
         db.refresh(flashcard)
+    
     return flashcard
-
 
 def create_review_session(
     db: Session,
@@ -581,138 +397,194 @@ def create_review_session(
     success_score: int,
     response_time: Optional[int] = None
 ) -> ReviewSession:
-    """Record a flashcard review session"""
-    review = ReviewSession(
-        user_id=uuid.UUID(user_id),
-        flashcard_id=uuid.UUID(flashcard_id),
+    """
+    Create a new review session record
+    """
+    review_session = ReviewSession(
+        id=uuid.uuid4(),
+        user_id=uuid.UUID(user_id) if isinstance(user_id, str) else user_id,
+        flashcard_id=uuid.UUID(flashcard_id) if isinstance(flashcard_id, str) else flashcard_id,
         success_score=success_score,
         response_time=response_time
     )
     
-    db.add(review)
+    db.add(review_session)
     db.commit()
-    db.refresh(review)
-    return review
+    db.refresh(review_session)
+    return review_session
 
-
-def get_user_review_history(
-    db: Session, 
-    user_id: str, 
-    flashcard_id: Optional[str] = None,
-    days: int = 30
-) -> List[ReviewSession]:
-    """Get user's review history"""
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
+def get_user_review_history(db: Session, user_id: str, limit: int = 50) -> List[ReviewSession]:
+    """
+    Get user's review history
+    """
+    user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
     
-    query = db.query(ReviewSession)\
-        .filter(
-            ReviewSession.user_id == uuid.UUID(user_id),
-            ReviewSession.review_date >= cutoff_date
-        )
-    
-    if flashcard_id:
-        query = query.filter(ReviewSession.flashcard_id == uuid.UUID(flashcard_id))
-    
-    return query.order_by(ReviewSession.review_date.desc()).all()
+    return db.query(ReviewSession).filter(
+        ReviewSession.user_id == user_uuid
+    ).order_by(desc(ReviewSession.review_date)).limit(limit).all()
 
-
-def get_user_flashcard_stats(db: Session, user_id: str) -> Dict:
-    """Get comprehensive flashcard statistics for a user"""
+def get_user_flashcard_stats(db: Session, user_id: str) -> Dict[str, Any]:
+    """
+    Get comprehensive flashcard statistics for a user
+    """
+    user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
     today = date.today()
     
-    # Count total flashcards
-    total_flashcards = db.query(Flashcard)\
-        .join(Interaction, Flashcard.interaction_id == Interaction.id, isouter=True)\
-        .join(Conversation, Interaction.conversation_id == Conversation.id, isouter=True)\
-        .filter(Conversation.user_id == uuid.UUID(user_id))\
-        .count()
+    # Total flashcards for user (through conversations/interactions)
+    total_flashcards = db.query(Flashcard).join(
+        Interaction, Flashcard.interaction_id == Interaction.id, isouter=True
+    ).join(
+        Conversation, Interaction.conversation_id == Conversation.id, isouter=True
+    ).filter(
+        or_(
+            Conversation.user_id == user_uuid,
+            Flashcard.interaction_id == None
+        )
+    ).count()
     
-    # Count due flashcards
-    due_flashcards = db.query(Flashcard)\
-        .join(Interaction, Flashcard.interaction_id == Interaction.id, isouter=True)\
-        .join(Conversation, Interaction.conversation_id == Conversation.id, isouter=True)\
-        .filter(
-            Conversation.user_id == uuid.UUID(user_id),
-            Flashcard.next_review_date <= today
-        )\
-        .count()
+    # Due flashcards
+    due_flashcards = db.query(Flashcard).join(
+        Interaction, Flashcard.interaction_id == Interaction.id, isouter=True
+    ).join(
+        Conversation, Interaction.conversation_id == Conversation.id, isouter=True
+    ).filter(
+        and_(
+            Flashcard.next_review_date <= today,
+            or_(
+                Conversation.user_id == user_uuid,
+                Flashcard.interaction_id == None
+            )
+        )
+    ).count()
     
-    # Get recent review performance (last 7 days)
-    week_ago = datetime.utcnow() - timedelta(days=7)
-    recent_reviews = db.query(ReviewSession)\
-        .filter(
-            ReviewSession.user_id == uuid.UUID(user_id),
+    # Recent reviews (last 7 days)
+    week_ago = today - timedelta(days=7)
+    recent_reviews = db.query(ReviewSession).filter(
+        and_(
+            ReviewSession.user_id == user_uuid,
             ReviewSession.review_date >= week_ago
-        )\
-        .all()
+        )
+    ).count()
     
-    total_reviews = len(recent_reviews)
-    avg_score = sum(r.success_score for r in recent_reviews) / total_reviews if total_reviews > 0 else 0
-    success_rate = sum(1 for r in recent_reviews if r.success_score >= 3) / total_reviews if total_reviews > 0 else 0
+    # Average score and success rate
+    avg_score_result = db.query(func.avg(ReviewSession.success_score)).filter(
+        ReviewSession.user_id == user_uuid
+    ).scalar()
+    avg_score = float(avg_score_result) if avg_score_result else 0.0
+    
+    # Success rate (scores >= 3)
+    total_reviews = db.query(ReviewSession).filter(ReviewSession.user_id == user_uuid).count()
+    successful_reviews = db.query(ReviewSession).filter(
+        and_(
+            ReviewSession.user_id == user_uuid,
+            ReviewSession.success_score >= 3
+        )
+    ).count()
+    
+    success_rate = (successful_reviews / total_reviews) if total_reviews > 0 else 0.0
+    
+    # Calculate streak (consecutive days with reviews)
+    streak_days = 0
+    check_date = today
+    while True:
+        day_reviews = db.query(ReviewSession).filter(
+            and_(
+                ReviewSession.user_id == user_uuid,
+                func.date(ReviewSession.review_date) == check_date
+            )
+        ).count()
+        
+        if day_reviews > 0:
+            streak_days += 1
+            check_date -= timedelta(days=1)
+        else:
+            break
+        
+        # Prevent infinite loop
+        if streak_days > 365:
+            break
     
     return {
         "total_flashcards": total_flashcards,
         "due_flashcards": due_flashcards,
-        "recent_reviews": total_reviews,
+        "recent_reviews": recent_reviews,
         "average_score": round(avg_score, 2),
         "success_rate": round(success_rate, 2),
-        "streak_days": 0  # Would require more complex calculation
+        "streak_days": streak_days
     }
 
+def get_flashcards_by_skill(db: Session, skill_id: int, limit: int = 50) -> List[Flashcard]:
+    """
+    Get flashcards for a specific skill
+    """
+    return db.query(Flashcard).filter(
+        Flashcard.skill_id == skill_id
+    ).limit(limit).all()
 
-def get_flashcards_by_skill(db: Session, user_id: str, skill_id: int) -> List[Flashcard]:
-    """Get all flashcards for a specific skill"""
-    return db.query(Flashcard)\
-        .join(Interaction, Flashcard.interaction_id == Interaction.id, isouter=True)\
-        .join(Conversation, Interaction.conversation_id == Conversation.id, isouter=True)\
-        .filter(
-            Flashcard.skill_id == skill_id,
-            Conversation.user_id == uuid.UUID(user_id)
-        )\
-        .order_by(Flashcard.created_at)\
-        .all()
-
-
-def batch_create_flashcards(db: Session, flashcards_data: List[Dict]) -> List[Flashcard]:
-    """Create multiple flashcards efficiently"""
+def batch_create_flashcards(db: Session, flashcards_data: List[Dict[str, Any]]) -> List[Flashcard]:
+    """
+    Create multiple flashcards in batch
+    """
     flashcards = []
-    for data in flashcards_data:
-        flashcard = Flashcard(**data)
-        flashcards.append(flashcard)
     
-    db.add_all(flashcards)
+    for card_data in flashcards_data:
+        flashcard = Flashcard(
+            id=uuid.uuid4(),
+            question=card_data["question"],
+            answer=card_data["answer"],
+            difficulty=card_data.get("difficulty", 1),
+            card_type=card_data.get("card_type", "concept"),
+            skill_id=card_data.get("skill_id"),
+            interaction_id=card_data.get("interaction_id"),
+            next_review_date=card_data.get("next_review_date", date.today())
+        )
+        flashcards.append(flashcard)
+        db.add(flashcard)
+    
     db.commit()
+    
+    for flashcard in flashcards:
+        db.refresh(flashcard)
+    
     return flashcards
 
-
 def delete_flashcard(db: Session, flashcard_id: str, user_id: str) -> bool:
-    """Delete a flashcard (with ownership check)"""
-    flashcard = db.query(Flashcard)\
-        .join(Interaction, Flashcard.interaction_id == Interaction.id, isouter=True)\
-        .join(Conversation, Interaction.conversation_id == Conversation.id, isouter=True)\
-        .filter(
-            Flashcard.id == uuid.UUID(flashcard_id),
-            Conversation.user_id == uuid.UUID(user_id)
-        )\
-        .first()
+    """
+    Delete flashcard with ownership verification
+    """
+    flashcard_uuid = uuid.UUID(flashcard_id) if isinstance(flashcard_id, str) else flashcard_id
+    user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+    
+    # Verify ownership through conversation relationship
+    flashcard = db.query(Flashcard).join(
+        Interaction, Flashcard.interaction_id == Interaction.id, isouter=True
+    ).join(
+        Conversation, Interaction.conversation_id == Conversation.id, isouter=True
+    ).filter(
+        and_(
+            Flashcard.id == flashcard_uuid,
+            or_(
+                Conversation.user_id == user_uuid,
+                Flashcard.interaction_id == None  # Allow deletion of orphaned cards
+            )
+        )
+    ).first()
     
     if flashcard:
+        # Delete associated review sessions first
+        db.query(ReviewSession).filter(ReviewSession.flashcard_id == flashcard_uuid).delete()
         db.delete(flashcard)
         db.commit()
         return True
+    
     return False
-
 
 # Development helper
 if __name__ == "__main__":
-    print("Creating database tables...")
-    create_tables()
-    
-    # Populate initial data
-    db = SessionLocal()
-    try:
-        populate_initial_data(db)
-    finally:
-        db.close()
-    
-    print("Done!")
+    print("Database operations module loaded successfully!")
+    print("Available operations:")
+    print("- User management: get_user_by_username")
+    print("- Conversations: create_conversation, save_interaction")  
+    print("- Skills: process_curator_analysis, get_user_skill_progression")
+    print("- Flashcards: create_flashcard, get_due_flashcards, update_flashcard_schedule")
+    print("- Reviews: create_review_session, get_user_flashcard_stats")

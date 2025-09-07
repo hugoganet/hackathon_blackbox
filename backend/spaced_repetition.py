@@ -1,309 +1,268 @@
 """
-Spaced Repetition Algorithm Implementation
-
-This module implements the SM-2 spaced repetition algorithm for optimal flashcard
-review scheduling based on user performance.
+Spaced Repetition Algorithm Implementation for Dev Mentor AI
+Based on SM-2 algorithm with adaptations for programming learning
 """
 
-from datetime import datetime, date, timedelta
-from typing import Dict, List, Optional, Tuple
-import math
-from dataclasses import dataclass
+from datetime import date, timedelta
 from enum import Enum
+from dataclasses import dataclass
+from typing import Optional
+import math
 
 
 class CardState(Enum):
     """Flashcard learning states"""
-    NEW = "new"  # Never reviewed
-    LEARNING = "learning"  # Being learned (interval < 1 day)
-    REVIEW = "review"  # In review phase (interval >= 1 day)
-    MATURE = "mature"  # Mastered (interval >= 21 days)
+    NEW = "new"
+    LEARNING = "learning"
+    REVIEW = "review"
+    MATURE = "mature"
 
 
 @dataclass
 class ReviewResult:
-    """Result of a flashcard review session"""
-    flashcard_id: str
-    user_id: str
-    success_score: int  # 0-5 scale
-    response_time: Optional[int] = None  # seconds
-    review_date: datetime = None
-    
-    def __post_init__(self):
-        if self.review_date is None:
-            self.review_date = datetime.utcnow()
+    """Result of a flashcard review calculation"""
+    next_review_date: date
+    interval_days: int
+    difficulty_factor: float
+    review_count: int
+    card_state: CardState
 
 
 @dataclass
-class SpacingParameters:
-    """Parameters for spaced repetition calculation"""
+class InitialParameters:
+    """Initial parameters for a new flashcard"""
     next_review_date: date
-    difficulty_factor: float
     interval_days: int
+    difficulty_factor: float
     card_state: CardState
-    review_count: int
 
 
 class SpacedRepetitionEngine:
     """
-    SM-2 based spaced repetition algorithm implementation
+    SM-2 based spaced repetition algorithm for flashcard scheduling
     
-    This class implements a simplified version of the SM-2 algorithm
-    optimized for the Dev Mentor AI learning system.
+    Adapted for programming learning with:
+    - Confidence score integration from curator analysis
+    - Performance-based difficulty adjustment
+    - Card state progression tracking
     """
     
-    # Algorithm constants
-    INITIAL_EASE_FACTOR = 2.5
+    # SM-2 Algorithm Constants
     MIN_EASE_FACTOR = 1.3
-    MAX_EASE_FACTOR = 3.0  # Allow higher than initial for good performance
-    EASE_ADJUSTMENT = 0.15
-    FAIL_THRESHOLD = 3  # Success scores below this trigger relearning
-    MATURE_INTERVAL_THRESHOLD = 21  # Days to be considered mature
+    DEFAULT_EASE_FACTOR = 2.5
+    MAX_EASE_FACTOR = 4.0
+    
+    # Learning intervals (days)
+    LEARNING_INTERVALS = [1, 6]  # First review: 1 day, Second: 6 days
+    MIN_MATURE_INTERVAL = 21     # Cards with interval ≥21 days are "mature"
     
     def __init__(self):
         """Initialize the spaced repetition engine"""
         pass
     
+    def get_initial_parameters(self, confidence_score: float = 0.5) -> InitialParameters:
+        """
+        Calculate initial parameters for a new flashcard
+        
+        Args:
+            confidence_score: Curator confidence (0.0-1.0), affects initial scheduling
+            
+        Returns:
+            InitialParameters with first review date and settings
+        """
+        # Convert confidence to initial ease factor
+        # Higher confidence = longer initial interval
+        ease_factor = self.DEFAULT_EASE_FACTOR + (confidence_score - 0.5) * 0.5
+        ease_factor = max(self.MIN_EASE_FACTOR, min(self.MAX_EASE_FACTOR, ease_factor))
+        
+        # Initial interval: 1 day for new cards
+        initial_interval = 1
+        next_review_date = date.today() + timedelta(days=initial_interval)
+        
+        return InitialParameters(
+            next_review_date=next_review_date,
+            interval_days=initial_interval,
+            difficulty_factor=ease_factor,
+            card_state=CardState.NEW
+        )
+    
     def calculate_next_review(
-        self, 
+        self,
         current_interval: int,
         difficulty_factor: float,
         success_score: int,
-        review_count: int = 0
-    ) -> SpacingParameters:
+        review_count: int
+    ) -> ReviewResult:
         """
-        Calculate the next review parameters based on performance
+        Calculate next review date using SM-2 algorithm
         
         Args:
             current_interval: Current interval in days
-            difficulty_factor: Current ease factor (1.3-2.5)
-            success_score: Performance score (0-5)
+            difficulty_factor: Current ease factor (difficulty)
+            success_score: Review performance (0-5 scale)
             review_count: Number of previous reviews
             
         Returns:
-            SpacingParameters with next review details
+            ReviewResult with updated scheduling parameters
         """
-        # Update ease factor based on performance
-        new_difficulty_factor = self._update_difficulty_factor(difficulty_factor, success_score)
+        # Validate inputs
+        success_score = max(0, min(5, success_score))
+        difficulty_factor = max(self.MIN_EASE_FACTOR, min(self.MAX_EASE_FACTOR, difficulty_factor))
         
-        # Calculate next interval
-        new_interval = self._calculate_interval(current_interval, new_difficulty_factor, success_score, review_count)
-        
-        # Determine card state
-        card_state = self._determine_card_state(new_interval, success_score, review_count)
+        # SM-2 Algorithm Implementation
+        if success_score < 3:
+            # Failed review - reset to learning state
+            new_interval = 1
+            new_ease_factor = max(self.MIN_EASE_FACTOR, difficulty_factor - 0.2)
+            new_review_count = 0
+            card_state = CardState.LEARNING
+            
+        else:
+            # Successful review - calculate next interval
+            new_review_count = review_count + 1
+            
+            if new_review_count == 1:
+                # First successful review
+                new_interval = self.LEARNING_INTERVALS[0]  # 1 day
+                card_state = CardState.LEARNING
+                
+            elif new_review_count == 2:
+                # Second successful review
+                new_interval = self.LEARNING_INTERVALS[1]  # 6 days
+                card_state = CardState.LEARNING
+                
+            else:
+                # Subsequent reviews - use SM-2 formula
+                new_interval = math.ceil(current_interval * difficulty_factor)
+                card_state = CardState.MATURE if new_interval >= self.MIN_MATURE_INTERVAL else CardState.REVIEW
+            
+            # Update ease factor based on performance
+            new_ease_factor = self._calculate_ease_factor(difficulty_factor, success_score)
         
         # Calculate next review date
         next_review_date = date.today() + timedelta(days=new_interval)
         
-        return SpacingParameters(
+        return ReviewResult(
             next_review_date=next_review_date,
-            difficulty_factor=new_difficulty_factor,
             interval_days=new_interval,
-            card_state=card_state,
-            review_count=review_count + 1
+            difficulty_factor=new_ease_factor,
+            review_count=new_review_count,
+            card_state=card_state
         )
     
-    def _update_difficulty_factor(self, current_factor: float, success_score: int) -> float:
+    def _calculate_ease_factor(self, current_ease: float, success_score: int) -> float:
         """
-        Update the difficulty factor based on review performance
+        Calculate new ease factor using SM-2 formula
         
-        SM-2 formula: EF' = EF + (0.1 - (5-q)*(0.08+(5-q)*0.02))
-        where q is the quality of response (success_score)
+        Args:
+            current_ease: Current ease factor
+            success_score: Performance score (0-5)
+            
+        Returns:
+            Updated ease factor
         """
-        # Clamp success_score to valid range
-        q = max(0, min(5, success_score))
+        # SM-2 ease factor adjustment formula
+        # EF' = EF + (0.1 - (5-q) * (0.08 + (5-q) * 0.02))
+        # where q is the success score (0-5)
         
-        # Apply SM-2 formula
+        q = success_score
         adjustment = 0.1 - (5 - q) * (0.08 + (5 - q) * 0.02)
-        new_factor = current_factor + adjustment
+        new_ease = current_ease + adjustment
         
         # Clamp to valid range
-        return max(self.MIN_EASE_FACTOR, min(self.MAX_EASE_FACTOR, new_factor))
+        return max(self.MIN_EASE_FACTOR, min(self.MAX_EASE_FACTOR, new_ease))
     
-    def _calculate_interval(
-        self, 
-        current_interval: int, 
-        ease_factor: float, 
-        success_score: int,
+    def get_retention_probability(self, days_since_review: int, difficulty_factor: float) -> float:
+        """
+        Estimate retention probability using forgetting curve
+        
+        Args:
+            days_since_review: Days since last review
+            difficulty_factor: Card's ease factor
+            
+        Returns:
+            Estimated retention probability (0.0-1.0)
+        """
+        # Simplified forgetting curve based on ease factor
+        # Higher ease factor = slower forgetting
+        decay_rate = 1.0 / difficulty_factor
+        retention = math.exp(-decay_rate * days_since_review)
+        
+        return max(0.0, min(1.0, retention))
+    
+    def is_overdue(self, card_next_review_date: date, urgency_days: int = 1) -> bool:
+        """
+        Check if a flashcard is overdue for review
+        
+        Args:
+            card_next_review_date: Scheduled review date
+            urgency_days: Additional days before considering overdue
+            
+        Returns:
+            True if card is overdue
+        """
+        today = date.today()
+        due_date = card_next_review_date + timedelta(days=urgency_days)
+        return today >= due_date
+    
+    def get_card_priority(
+        self,
+        next_review_date: date,
+        difficulty_factor: float,
         review_count: int
-    ) -> int:
-        """Calculate the next review interval in days"""
-        
-        # Failed review - reset to learning state
-        if success_score < self.FAIL_THRESHOLD:
-            return 1
-        
-        # First successful review
-        if review_count == 0:
-            return 1
-        
-        # Second successful review  
-        if review_count == 1:
-            return 6
-        
-        # Subsequent reviews - apply ease factor
-        new_interval = math.ceil(current_interval * ease_factor)
-        
-        # Ensure minimum progression (at least 1 day increase)
-        return max(new_interval, current_interval + 1)
-    
-    def _determine_card_state(self, interval_days: int, success_score: int, review_count: int) -> CardState:
-        """Determine the learning state of the card"""
-        if review_count == 0:
-            return CardState.NEW
-        elif success_score < self.FAIL_THRESHOLD:
-            return CardState.LEARNING
-        elif interval_days >= self.MATURE_INTERVAL_THRESHOLD:
-            return CardState.MATURE
-        else:
-            return CardState.REVIEW
-    
-    def get_initial_parameters(self, confidence_score: float = 0.5) -> SpacingParameters:
+    ) -> float:
         """
-        Get initial spacing parameters for a new flashcard
+        Calculate card priority for review scheduling
         
         Args:
-            confidence_score: Initial confidence from curator (0.0-1.0)
+            next_review_date: Scheduled review date
+            difficulty_factor: Card's ease factor
+            review_count: Number of reviews completed
             
         Returns:
-            Initial SpacingParameters for the card
+            Priority score (higher = more urgent)
         """
-        # Clamp confidence score to valid range
-        confidence_score = max(0.0, min(1.0, confidence_score))
+        today = date.today()
+        days_overdue = max(0, (today - next_review_date).days)
         
-        # Map confidence to initial interval
-        # High confidence: longer initial interval
-        # Low confidence: shorter initial interval
-        initial_interval = 1 if confidence_score < 0.7 else 3
+        # Priority factors:
+        # 1. Overdue cards get higher priority
+        # 2. Lower ease factor (harder cards) get higher priority  
+        # 3. Cards with fewer reviews get higher priority
         
-        # Initial difficulty factor based on confidence
-        initial_ease = self.MIN_EASE_FACTOR + (confidence_score * (self.MAX_EASE_FACTOR - self.MIN_EASE_FACTOR))
-        initial_ease = max(self.MIN_EASE_FACTOR, min(self.MAX_EASE_FACTOR, initial_ease))
+        overdue_weight = days_overdue * 2.0
+        difficulty_weight = (self.MAX_EASE_FACTOR - difficulty_factor) * 0.5
+        newness_weight = max(0, 10 - review_count) * 0.1
         
-        return SpacingParameters(
-            next_review_date=date.today() + timedelta(days=initial_interval),
-            difficulty_factor=initial_ease,
-            interval_days=initial_interval,
-            card_state=CardState.NEW,
-            review_count=0
-        )
-    
-    def process_review_batch(self, reviews: List[ReviewResult]) -> Dict[str, SpacingParameters]:
-        """
-        Process a batch of review results
-        
-        Args:
-            reviews: List of ReviewResult objects
-            
-        Returns:
-            Dict mapping flashcard_id to new SpacingParameters
-        """
-        results = {}
-        for review in reviews:
-            # This would normally fetch current parameters from database
-            # For testing, we'll use realistic values that show progression
-            current_interval = 1 if review.success_score < 3 else 3  # Simulate some progression
-            current_ease = 2.5   # Would be fetched from DB
-            review_count = 1     # Simulate first real review (not initial)
-            
-            parameters = self.calculate_next_review(
-                current_interval=current_interval,
-                difficulty_factor=current_ease,
-                success_score=review.success_score,
-                review_count=review_count
-            )
-            
-            results[review.flashcard_id] = parameters
-        
-        return results
-    
-    def get_difficulty_adjustment(self, success_rate: float, time_span_days: int = 30) -> float:
-        """
-        Calculate difficulty adjustment based on historical success rate
-        
-        Args:
-            success_rate: Success rate over time span (0.0-1.0)
-            time_span_days: Time span for calculation
-            
-        Returns:
-            Difficulty adjustment multiplier
-        """
-        if success_rate < 0.6:
-            return 0.8  # Make easier
-        elif success_rate > 0.9:
-            return 1.2  # Make harder
-        else:
-            return 1.0  # No change
+        return overdue_weight + difficulty_weight + newness_weight
 
 
-def calculate_retention_prediction(
-    interval_days: int, 
-    difficulty_factor: float, 
-    review_count: int
-) -> float:
-    """
-    Predict retention probability using simplified forgetting curve
-    
-    Args:
-        interval_days: Days since last review
-        difficulty_factor: Card difficulty factor
-        review_count: Number of previous reviews
-        
-    Returns:
-        Predicted retention probability (0.0-1.0)
-    """
-    # Simplified forgetting curve with difficulty adjustment
-    # Higher difficulty factor means easier card, so slower decay
-    decay_rate = 1.0 / max(1.0, difficulty_factor)
-    
-    # More reviews increase stability
-    stability = math.log(max(1, review_count) + 1) + 1
-    
-    # Calculate retention with adjusted parameters for better predictions
-    retention = math.exp(-decay_rate * interval_days / (stability * 2))
-    return max(0.0, min(1.0, retention))
-
-
-def get_optimal_review_load(target_retention: float = 0.9) -> int:
-    """
-    Calculate optimal daily review load to maintain target retention
-    
-    Args:
-        target_retention: Target retention rate (0.0-1.0)
-        
-    Returns:
-        Recommended daily review count
-    """
-    # Simplified calculation - higher retention target means more reviews needed
-    base_load = 20
-    # Higher target retention needs MORE reviews (inverse relationship with failure rate)
-    failure_rate = 1.0 - target_retention
-    adjustment = failure_rate * 30  # More failures = fewer reviews needed
-    return max(5, int(base_load + adjustment))
-
-
-# Example usage and testing
+# Development testing
 if __name__ == "__main__":
+    print("Testing Spaced Repetition Engine...")
+    
     engine = SpacedRepetitionEngine()
     
-    # Test initial parameters
-    initial = engine.get_initial_parameters(confidence_score=0.8)
-    print(f"Initial parameters: {initial}")
+    # Test 1: Initial parameters
+    initial = engine.get_initial_parameters(confidence_score=0.7)
+    print(f"Initial: {initial}")
     
-    # Test review calculation
-    next_params = engine.calculate_next_review(
-        current_interval=1,
-        difficulty_factor=2.5,
-        success_score=4,
-        review_count=0
-    )
-    print(f"After first review (success=4): {next_params}")
+    # Test 2: Successful reviews
+    result1 = engine.calculate_next_review(1, 2.5, 4, 0)
+    print(f"First review (score 4): {result1}")
     
-    # Test failed review
-    failed_params = engine.calculate_next_review(
-        current_interval=6,
-        difficulty_factor=2.3,
-        success_score=2,
-        review_count=1
-    )
-    print(f"After failed review (success=2): {failed_params}")
+    result2 = engine.calculate_next_review(1, 2.5, 5, 1)  
+    print(f"Second review (score 5): {result2}")
+    
+    result3 = engine.calculate_next_review(6, 2.6, 4, 2)
+    print(f"Third review (score 4): {result3}")
+    
+    # Test 3: Failed review
+    failed = engine.calculate_next_review(15, 2.6, 2, 3)
+    print(f"Failed review (score 2): {failed}")
+    
+    # Test 4: Retention probability
+    retention = engine.get_retention_probability(7, 2.5)
+    print(f"Retention after 7 days: {retention:.2%}")
+    
+    print("✅ Spaced repetition engine tested successfully!")

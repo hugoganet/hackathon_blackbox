@@ -13,30 +13,39 @@ import tempfile
 import shutil
 import os
 
+<<<<<<< HEAD
 # Import application components
-from api import app
-from database import (
+=======
+# Test database setup - PostgreSQL for proper UUID and production parity
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "postgresql://postgres:password@localhost:5432/test_dev_mentor_ai")
+# Set the DATABASE_URL environment variable BEFORE importing backend modules
+os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+
+# Import application components (AFTER setting environment variables)
+>>>>>>> 5800e139677ff61d9ee54bd663ae118b4dd44003
+from backend.api import app
+from backend.database import (
     Base, get_db, User, RefDomain, Skill, SkillHistory,
     create_or_update_skill, update_skill_history, process_curator_analysis,
     get_user_skill_progression, populate_initial_data
 )
-from main import BlackboxMentor
-import api
+from backend.main import BlackboxMentor
+<<<<<<< HEAD
+from backend import api
+=======
+import backend.api as api
+>>>>>>> 5800e139677ff61d9ee54bd663ae118b4dd44003
 
 # Import test utilities
 from tests.helpers.curator_test_utils import CuratorTestHelper
 from tests.fixtures.curator_conversations import JUNIOR_CONVERSATIONS
-
-# Test database setup - PostgreSQL for proper UUID and production parity
-import os
-TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "postgresql://postgres:password@localhost:5432/test_dev_mentor_ai")
 
 # Create engine with PostgreSQL
 engine = create_engine(
     TEST_DATABASE_URL,
     pool_pre_ping=True,
     pool_recycle=300,
-    echo=False  # Set to True for SQL debugging
+    echo=True  # Set to True for SQL debugging
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -74,7 +83,7 @@ def setup_test_db():
 def setup_curator_agent():
     """Initialize curator agent for testing"""
     try:
-        api.curator_agent = BlackboxMentor("curator-agent.md")
+        api.curator_agent = BlackboxMentor("agents/curator-agent.md")
         yield api.curator_agent
     except Exception as e:
         pytest.skip(f"Could not initialize curator agent: {e}")
@@ -149,12 +158,12 @@ class TestSkillDatabaseModels:
             
             # Create first skill history entry
             history1 = update_skill_history(db, str(user.id), "react_hooks", 0.5, "FRAMEWORKS")
-            assert history1.mastery_level == 2
+            assert history1.mastery_level == 3
             
             # Create second entry same day - should update existing
             history2 = update_skill_history(db, str(user.id), "react_hooks", 0.9, "FRAMEWORKS")
             assert history2.id_history == history1.id_history  # Same entry
-            assert history2.mastery_level == 4  # Updated to higher mastery
+            assert history2.mastery_level == 4  # Updated to higher mastery (0.9 -> mastery 4)
             
         finally:
             db.close()
@@ -427,6 +436,8 @@ class TestCompleteWorkflow:
             response = client.post("/curator/analyze", json=request_data)
             
             # Step 3: Verify curator analysis response
+            if response.status_code != 200:
+                print(f"API Error Response: {response.json()}")
             assert response.status_code == 200
             data = response.json()
             

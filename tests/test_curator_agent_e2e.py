@@ -15,11 +15,15 @@ import shutil
 import os
 
 # Import application components
-from api import app, curator_agent
-from database import Base, get_db, User, Conversation, Interaction
-from memory_store import ConversationMemory
-from main import BlackboxMentor
-import api
+from backend.api import app, curator_agent
+from backend.database import Base, get_db, User, Conversation, Interaction
+from backend.memory_store import ConversationMemory
+from backend.main import BlackboxMentor
+<<<<<<< HEAD
+from backend import api
+=======
+import backend.api as api
+>>>>>>> 5800e139677ff61d9ee54bd663ae118b4dd44003
 
 # Import test utilities
 from tests.helpers.curator_test_utils import (
@@ -30,9 +34,14 @@ from tests.fixtures.curator_conversations import (
     MOCK_CURATOR_RESPONSES
 )
 
-# Test database setup
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test_curator.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+<<<<<<< HEAD
+# Test database setup - PostgreSQL
+SQLALCHEMY_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "postgresql://postgres:test@localhost:5432/test_curator")
+=======
+# Test database setup - PostgreSQL only
+SQLALCHEMY_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "postgresql://localhost:5432/test_curator_e2e")
+>>>>>>> 5800e139677ff61d9ee54bd663ae118b4dd44003
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def override_get_db():
@@ -56,8 +65,6 @@ def setup_test_db():
     yield
     # Cleanup
     Base.metadata.drop_all(bind=engine)
-    if os.path.exists("test_curator.db"):
-        os.remove("test_curator.db")
 
 @pytest.fixture(scope="session")
 def setup_test_memory():
@@ -124,7 +131,6 @@ class TestCuratorAgentE2E:
             # Validate performance
             PerformanceTestHelper.assert_performance_acceptable(data["analysis_time_ms"])
     
-    @pytest.mark.skip(reason="Database UUID compatibility issue with SQLite tests - functionality works in production PostgreSQL")
     def test_curator_workflow_with_database_integration(self, setup_test_db, setup_curator_agent):
         """Test curator workflow with full database interaction tracking"""
         
