@@ -14,19 +14,19 @@ import shutil
 import os
 
 # Import application components
-from api import app, curator_agent
-from database import Base, get_db
-from memory_store import ConversationMemory
-from main import BlackboxMentor
-import api
+from backend.api import app, curator_agent
+from backend.database import Base, get_db
+from backend.memory_store import ConversationMemory
+from backend.main import BlackboxMentor
+from backend import api
 
 # Import test utilities
 from tests.helpers.curator_test_utils import CuratorTestHelper, AssertionHelper
 from tests.fixtures.curator_conversations import MOCK_CURATOR_RESPONSES
 
-# Test database setup
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test_curator_integration.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+# Test database setup - PostgreSQL
+SQLALCHEMY_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "postgresql://postgres:test@localhost:5432/test_curator_integration")
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def override_get_db():

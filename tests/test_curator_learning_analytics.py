@@ -14,7 +14,7 @@ from tests.fixtures.curator_conversations import (
     JUNIOR_CONVERSATIONS, INTERMEDIATE_CONVERSATIONS, SENIOR_CONVERSATIONS,
     ERROR_CONVERSATIONS, ALL_CONVERSATIONS
 )
-from main import BlackboxMentor
+from backend.main import BlackboxMentor
 
 @pytest.fixture(scope="session")
 def setup_curator_agent():

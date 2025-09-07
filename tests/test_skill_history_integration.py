@@ -14,14 +14,14 @@ import shutil
 import os
 
 # Import application components
-from api import app
-from database import (
+from backend.api import app
+from backend.database import (
     Base, get_db, User, RefDomain, Skill, SkillHistory,
     create_or_update_skill, update_skill_history, process_curator_analysis,
     get_user_skill_progression, populate_initial_data
 )
-from main import BlackboxMentor
-import api
+from backend.main import BlackboxMentor
+from backend import api
 
 # Import test utilities
 from tests.helpers.curator_test_utils import CuratorTestHelper

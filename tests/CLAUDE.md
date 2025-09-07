@@ -47,6 +47,10 @@ pip install pytest pytest-asyncio httpx
 
 ### Run All Tests
 ```bash
+# Set up PostgreSQL test database URL
+export TEST_DATABASE_URL="postgresql://postgres:test@localhost:5432/test_dev_mentor"
+export DATABASE_URL="postgresql://postgres:test@localhost:5432/dev_mentor"
+
 # Run all tests with verbose output
 pytest tests/ -v
 
@@ -58,9 +62,10 @@ pytest tests/ --cov=. --cov-report=html
 ```
 
 ### Test Database
-- Tests use SQLite in-memory database for isolation
+- Tests use PostgreSQL for production parity
 - Each test run creates fresh database tables
 - No interference with production data
+- Requires PostgreSQL connection (TEST_DATABASE_URL environment variable)
 
 ## Test Coverage
 
@@ -149,7 +154,8 @@ jobs:
           pip install pytest pytest-cov pytest-asyncio
       - name: Run tests
         env:
-          DATABASE_URL: postgresql://postgres:test_password@localhost:5432/test_dev_mentor
+          DATABASE_URL: postgresql://postgres:test_password@localhost:5432/dev_mentor
+          TEST_DATABASE_URL: postgresql://postgres:test_password@localhost:5432/test_dev_mentor
           BLACKBOX_API_KEY: ${{ secrets.BLACKBOX_API_KEY }}
         run: |
           pytest tests/ -v --cov=. --cov-report=xml
@@ -281,6 +287,19 @@ def generate_conversation_data(count=100):
     return conversations
 ```
 
+## Database Schema Changes (2024-01-07)
+
+### PostgreSQL-Only Architecture
+- **Removed SQLite support**: Tests now require PostgreSQL for production parity
+- **Single schema**: Consolidated to `backend/database.py` (removed `backend/database/models.py`)
+- **UUID handling**: Proper PostgreSQL UUID types throughout
+- **Environment variables**: Both `DATABASE_URL` and `TEST_DATABASE_URL` required
+
+### Migration Notes
+- All test imports now use `from backend.database import Base, User, Conversation, Interaction`
+- Test database URLs must be PostgreSQL format: `postgresql://user:pass@host:port/dbname`
+- No more SQLite fallback - production consistency enforced
+
 ## Notes
 - All tests follow English-only coding standards
 - Mock external API calls for consistent testing
@@ -288,3 +307,4 @@ def generate_conversation_data(count=100):
 - Clean up resources after each test run
 - Performance tests run separately from unit tests
 - Test data is version controlled for reproducibility
+- **PostgreSQL required**: Tests will fail without proper database connection

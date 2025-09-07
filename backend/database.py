@@ -12,36 +12,30 @@ import uuid
 import os
 from typing import Generator, List, Optional
 
-# Database configuration
+# Database configuration - PostgreSQL only
 # Railway automatically provides DATABASE_URL environment variable
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dev_mentor.db")  # Fallback to SQLite for local dev
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Check if we're using PostgreSQL or SQLite
-is_postgres = DATABASE_URL.startswith("postgresql")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is required. This application requires PostgreSQL.")
 
-# SQLAlchemy setup
-if is_postgres:
-    # PostgreSQL configuration
-    engine = create_engine(
-        DATABASE_URL,
-        pool_pre_ping=True,  # Verify connections before use
-        pool_recycle=300,    # Recycle connections every 5 minutes
-    )
-else:
-    # SQLite configuration (for local development)
-    engine = create_engine(DATABASE_URL)
+if not DATABASE_URL.startswith("postgresql"):
+    raise ValueError("Only PostgreSQL databases are supported. Please provide a PostgreSQL DATABASE_URL.")
+
+# PostgreSQL-only SQLAlchemy setup
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,  # Verify connections before use
+    pool_recycle=300,    # Recycle connections every 5 minutes
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 # Database Models
 
-# Define UUID column type based on database
-if is_postgres:
-    UUIDType = UUID(as_uuid=True)
-else:
-    # For SQLite, use String to store UUID as text
-    UUIDType = String(36)
+# PostgreSQL UUID column type
+UUIDType = UUID(as_uuid=True)
 
 class User(Base):
     """
@@ -223,15 +217,10 @@ def create_conversation(db: Session, user_id: str, session_id: str, agent_type: 
     """
     Create new conversation record
     """
-    # Handle UUID properly for both PostgreSQL and SQLite
-    if is_postgres:
-        # PostgreSQL: convert string to UUID object
-        if isinstance(user_id, str):
-            user_id = uuid.UUID(user_id)
-        conversation_id = uuid.uuid4()
-    else:
-        # SQLite: keep as string
-        conversation_id = str(uuid.uuid4())
+    # Handle UUID for PostgreSQL
+    if isinstance(user_id, str):
+        user_id = uuid.UUID(user_id)
+    conversation_id = uuid.uuid4()
     
     conversation = Conversation(
         id=conversation_id,
@@ -254,15 +243,10 @@ def save_interaction(
     """
     Save interaction to database for memory and analytics
     """
-    # Handle UUID properly for both PostgreSQL and SQLite
-    if is_postgres:
-        # PostgreSQL: convert string to UUID object
-        if isinstance(conversation_id, str):
-            conversation_id = uuid.UUID(conversation_id)
-        interaction_id = uuid.uuid4()
-    else:
-        # SQLite: keep as string
-        interaction_id = str(uuid.uuid4())
+    # Handle UUID for PostgreSQL
+    if isinstance(conversation_id, str):
+        conversation_id = uuid.UUID(conversation_id)
+    interaction_id = uuid.uuid4()
     
     interaction = Interaction(
         id=interaction_id,
@@ -315,11 +299,8 @@ def update_skill_history(db: Session, user_id: str, skill_name: str, confidence:
     # Get or create skill
     skill = create_or_update_skill(db, skill_name, domain_name=domain_name)
     
-    # Get user UUID properly
-    if is_postgres:
-        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
-    else:
-        user_uuid = user_id
+    # Get user UUID for PostgreSQL
+    user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
     
     # Check for existing skill history today
     today = date.today()
@@ -338,10 +319,7 @@ def update_skill_history(db: Session, user_id: str, skill_name: str, confidence:
         return existing_history
     else:
         # Create new skill history entry
-        if is_postgres:
-            history_id = uuid.uuid4()
-        else:
-            history_id = str(uuid.uuid4())
+        history_id = uuid.uuid4()
         
         skill_history = SkillHistory(
             id_history=history_id,
@@ -359,10 +337,8 @@ def get_user_skill_progression(db: Session, user_id: str, limit: int = 20) -> Li
     """
     Get user's skill progression history
     """
-    if is_postgres:
-        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
-    else:
-        user_uuid = user_id
+    # Handle UUID for PostgreSQL
+    user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
     
     # Query skill history with skill names
     skill_histories = db.query(SkillHistory, Skill.name, RefDomain.name.label("domain_name")).join(

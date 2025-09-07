@@ -84,10 +84,17 @@ The database follows a comprehensive relational model supporting spaced repetiti
 - **INTERACTION** → categorized by → **REF_INTENT** (question types)
 - **INTERACTION** → uses → **REF_LANGUAGE** (programming languages)
 
-### Database Visualization
+### Database Architecture
+
+#### **Active Implementation**
+- **Single Schema**: `backend/database.py` with PostgreSQL-only models (currently in use)
+- **Production Parity**: No SQLite fallback - PostgreSQL required for all environments
+- **UUID Support**: Proper PostgreSQL UUID types throughout
+
+#### **Design Documentation**
 - **Complete ERD**: `backend/database/doc/dev_mentor_ai.svg`
 - **Source Model**: `backend/database/doc/dev_mentor_ai.mcd` (Mocodo format)
-- **Generate Diagram**: `mocodo --input backend/database/doc/dev_mentor_ai.mcd --scale 1.2`
+- **Architecture Details**: `backend/database/CLAUDE.md`
 
 ### Key Design Features
 - **Proper relationship integrity**: All tables connected with meaningful relationships
@@ -115,10 +122,9 @@ dev_mentor_ai/
 ├── backend/                   # Backend application code
 │   ├── api.py                # FastAPI backend server
 │   ├── main.py               # Original CLI program  
-│   ├── database.py           # PostgreSQL models & utilities
+│   ├── database.py           # PostgreSQL-only models & utilities (active schema)
 │   ├── memory_store.py       # ChromaDB vector memory system
-│   └── database/             # Database models and utilities
-│       ├── models.py         # SQLAlchemy database models
+│   └── database/             # Database design documentation
 │       ├── populate_db.py    # Database population scripts
 │       ├── CLAUDE.md         # Database architecture documentation
 │       └── doc/              # Database design documentation
@@ -193,6 +199,10 @@ git push origin main
 
 ### Testing
 ```bash
+# Set up test environment
+export DATABASE_URL="postgresql://postgres:password@localhost:5432/dev_mentor"
+export TEST_DATABASE_URL="postgresql://postgres:password@localhost:5432/test_dev_mentor"
+
 # Run test suite
 pytest tests/ -v
 
@@ -203,6 +213,18 @@ python3 backend/memory_store.py  # Test memory store
 # Test API endpoints
 curl http://localhost:8000/health
 curl http://localhost:8000/agents
+```
+
+### Database Setup
+```bash
+# Set required environment variable
+export DATABASE_URL="postgresql://postgres:password@localhost:5432/dev_mentor"
+
+# Create database tables
+python3 -c "from backend.database import create_tables; create_tables()"
+
+# Populate initial reference data
+python3 backend/database.py
 ```
 
 ### Database Diagram Generation (Mocodo)
@@ -326,11 +348,11 @@ Each directory contains comprehensive technical documentation:
 
 ### Key Design Decisions
 - **FastAPI over Flask**: Better async support, automatic docs, type safety
-- **PostgreSQL over SQLite**: Production scalability, concurrent users, advanced features
+- **PostgreSQL-only**: Production parity, no SQLite fallback, proper UUID support
 - **ChromaDB over in-memory**: Persistent conversation memory, semantic search capabilities
 - **Railway over Heroku**: Better Python support, integrated PostgreSQL, competitive pricing
 - **Multi-agent system**: Specialized agents for mentoring, analysis, and spaced repetition
-- **Mocodo ERD modeling**: Visual database design with proper relationship integrity
+- **Single schema approach**: Consolidated database models in `backend/database.py`
 - **Normalized database design**: Supports complex spaced repetition algorithms and analytics
 - **Relational integrity**: All entities properly connected, no orphaned tables
 
@@ -344,13 +366,14 @@ Each directory contains comprehensive technical documentation:
 
 ### ✅ Completed Features
 - Production-ready FastAPI backend with comprehensive API
-- PostgreSQL database with proper relationships and migrations
+- PostgreSQL-only database with proper relationships and UUID support
 - ChromaDB vector store with semantic conversation search
 - Multi-agent system (strict mentor + curator + flashcard agents)  
 - Railway deployment configuration with one-command setup
-- Comprehensive test coverage (>80%) with automated testing
+- Comprehensive test coverage (>80%) with PostgreSQL testing
 - Memory system with learning pattern analysis
 - Health monitoring and system statistics endpoints
+- Clean single-schema architecture (removed dual-schema complexity)
 
 ### 📊 Current Metrics
 - **API Endpoints**: 6 core endpoints fully functional
