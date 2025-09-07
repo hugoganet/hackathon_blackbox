@@ -94,21 +94,24 @@ class BlackboxMentor:
         except Exception as e:
             return f"❌ Unexpected error: {e}"
 
-def choose_agent() -> str:
+def choose_agent() -> tuple:
     """Allow user to choose which agent to use"""
     print("\n🎯 Choose your mentor agent:")
     print("1. Mentor Agent (gives complete answers)")
     print("2. Strict Mentor Agent (hints only, ideal for juniors)")
+    print("3. PydanticAI Mentor Agent (advanced memory-guided mentoring)")
     
     while True:
         try:
-            choice = input("\nYour choice (1 or 2): ").strip()
+            choice = input("\nYour choice (1, 2, or 3): ").strip()
             if choice == "1":
-                return "../agents/agent-mentor.md"
+                return ("blackbox", "../agents/agent-mentor.md")
             elif choice == "2":
-                return "../agents/agent-mentor-strict.md"
+                return ("blackbox", "../agents/agent-mentor-strict.md")
+            elif choice == "3":
+                return ("pydantic", None)
             else:
-                print("⚠️  Please enter 1 or 2")
+                print("⚠️  Please enter 1, 2, or 3")
         except KeyboardInterrupt:
             print("\n\n👋 Program interrupted. Goodbye!")
             exit(0)
@@ -122,11 +125,26 @@ def main():
     print("=" * 50)
     
     # Choose the agent
-    agent_file = choose_agent()
+    agent_type, agent_file = choose_agent()
     
     try:
-        mentor = BlackboxMentor(agent_file)
-        agent_name = "Mentor Agent" if "strict" not in agent_file else "Strict Mentor Agent"
+        if agent_type == "blackbox":
+            mentor = BlackboxMentor(agent_file)
+        elif agent_type == "pydantic":
+            try:
+                from agents.mentor_agent import BlackboxMentorAdapter
+                mentor = BlackboxMentorAdapter()
+                agent_name = "PydanticAI Mentor Agent"
+            except ImportError as e:
+                print(f"❌ PydanticAI mentor agent not available: {e}")
+                print("⚠️  Falling back to Blackbox Strict Mentor")
+                mentor = BlackboxMentor("../agents/agent-mentor-strict.md")
+                agent_name = "Strict Mentor Agent (Fallback)"
+        else:
+            raise ValueError(f"Unknown agent type: {agent_type}")
+        
+        if agent_type == "blackbox":
+            agent_name = "Mentor Agent" if "strict" not in agent_file else "Strict Mentor Agent"
         print(f"✅ {agent_name} loaded successfully from {agent_file}")
     except Exception as e:
         print(f"❌ Initialization error: {e}")
