@@ -8,14 +8,6 @@ interface MetricsCardProps {
 }
 
 const MetricsCard: React.FC<MetricsCardProps> = ({ junior }) => {
-  const _formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date);
-  };
 
   const getProgressColor = (skillCount: number) => {
     if (skillCount >= 5) return 'text-green-600 bg-green-100';

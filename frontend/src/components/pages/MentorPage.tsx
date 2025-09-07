@@ -44,7 +44,6 @@ const MentorPage: React.FC = () => {
       setPanelSizes({ left: newLeft, middle: newMiddle, right: newRight });
     } else if (isResizing === 'middle') {
       const leftWidth = panelSizes.left;
-      const _rightStart = leftWidth + panelSizes.middle;
       const newMiddle = Math.max(30, Math.min(70, percentage - leftWidth));
       const newRight = 100 - leftWidth - newMiddle;
       if (newRight >= 20) {
