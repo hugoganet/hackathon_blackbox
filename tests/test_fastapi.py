@@ -17,13 +17,8 @@ from backend.api import app
 from backend.database_operations import Base, get_db
 from backend.memory_store import ConversationMemory
 
-<<<<<<< HEAD
 # Create test database - PostgreSQL
 SQLALCHEMY_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "postgresql://postgres:test@localhost:5432/test_fastapi")
-=======
-# Create test database - PostgreSQL only
-SQLALCHEMY_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "postgresql://localhost:5432/test_dev_mentor")
->>>>>>> 5800e139677ff61d9ee54bd663ae118b4dd44003
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

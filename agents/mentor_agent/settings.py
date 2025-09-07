@@ -25,11 +25,11 @@ class MentorSettings(BaseSettings):
     
     # LLM Configuration (Using existing BlackboxAI setup)
     llm_provider: str = Field(default="blackboxai", description="LLM provider")
-    llm_api_key: str = Field(..., env="BLACKBOX_API_KEY", description="BlackboxAI API key")
+    llm_api_key: Optional[str] = Field(default=None, env="BLACKBOX_API_KEY", description="BlackboxAI API key")
     llm_model: str = Field(default="anthropic/claude-sonnet-4", description="Model name")
     
     # Database Configuration (Using existing PostgreSQL)
-    database_url: str = Field(..., env="DATABASE_URL", description="PostgreSQL connection string")
+    database_url: Optional[str] = Field(default=None, env="DATABASE_URL", description="PostgreSQL connection string")
     
     # ChromaDB Configuration (Using existing vector store)
     chroma_path: str = Field(default="./chroma_memory", description="ChromaDB storage path")
@@ -52,16 +52,16 @@ class MentorSettings(BaseSettings):
     @field_validator("llm_api_key")
     @classmethod
     def validate_llm_key(cls, v):
-        """Ensure BlackboxAI API key is not empty."""
-        if not v or v.strip() == "":
-            raise ValueError("BLACKBOX_API_KEY cannot be empty")
+        """Ensure BlackboxAI API key is valid if provided."""
+        if v is not None and v.strip() == "":
+            raise ValueError("BLACKBOX_API_KEY cannot be empty if provided")
         return v
     
     @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, v):
-        """Ensure database URL is properly formatted."""
-        if not v or not v.startswith(("postgresql://", "postgres://", "sqlite://")):
+        """Ensure database URL is properly formatted if provided."""
+        if v is not None and not v.startswith(("postgresql://", "postgres://", "sqlite://")):
             raise ValueError("DATABASE_URL must be a valid PostgreSQL or SQLite connection string")
         return v
 

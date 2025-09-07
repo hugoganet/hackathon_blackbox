@@ -2,6 +2,7 @@
 """
 Mini program that uses the Blackbox API to answer user questions
 with a custom system prompt from agents/agent-mentor.md
+Updated to use PydanticAI mentor agent with backward compatibility
 """
 
 import os
@@ -21,78 +22,85 @@ def load_env_file():
                     key, value = line.split('=', 1)
                     os.environ[key.strip()] = value.strip()
 
-class BlackboxMentor:
-    def __init__(self, agent_file: str = "../agents/agent-mentor.md"):
-        self.api_url = "https://api.blackbox.ai/chat/completions"
-        self.agent_file = agent_file
-        self.system_prompt = self._load_system_prompt()
+# Import the new PydanticAI-based adapter
+try:
+    from agents.mentor_agent.adapter import BlackboxMentorAdapter
+    BlackboxMentor = BlackboxMentorAdapter
+except ImportError as e:
+    print(f"Warning: Could not import PydanticAI adapter ({e}), falling back to original BlackboxMentor")
+    # Fallback to original implementation if PydanticAI is not available
+    class BlackboxMentor:
+        def __init__(self, agent_file: str = "../agents/agent-mentor.md"):
+            self.api_url = "https://api.blackbox.ai/chat/completions"
+            self.agent_file = agent_file
+            self.system_prompt = self._load_system_prompt()
         
-    def _load_system_prompt(self) -> str:
-        """Load system prompt from specified agent file"""
-        prompt_file = Path(self.agent_file)
-        
-        if not prompt_file.exists():
-            raise FileNotFoundError(f"File {prompt_file} not found. Please create this file with the system prompt.")
-        
-        try:
-            with open(prompt_file, 'r', encoding='utf-8') as f:
-                content = f.read().strip()
-                if not content:
-                    raise ValueError(f"File {prompt_file} is empty. Please add a system prompt.")
-                return content
-        except Exception as e:
-            raise RuntimeError(f"Error reading file {prompt_file}: {e}")
-    
-    def _get_api_key(self) -> Optional[str]:
-        """Get API key from environment variables"""
-        return os.getenv('BLACKBOX_API_KEY')
-    
-    def call_blackbox_api(self, user_prompt: str) -> str:
-        """Call Blackbox API with user prompt"""
-        api_key = self._get_api_key()
-        
-        if not api_key:
-            return "❌ Error: Blackbox API key not configured. Add BLACKBOX_API_KEY to your environment variables."
-        
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {api_key}'
-        }
-        
-        payload = {
-            'model': 'blackboxai/anthropic/claude-sonnet-4',
-            'messages': [
-                {
-                    'role': 'system',
-                    'content': self.system_prompt
-                },
-                {
-                    'role': 'user', 
-                    'content': user_prompt
-                }
-            ],
-            'temperature': 0.7,
-            'max_tokens': 1000,
-            'stream': False
-        }
-        
-        try:
-            response = requests.post(self.api_url, headers=headers, json=payload, timeout=30)
-            response.raise_for_status()
+        def _load_system_prompt(self) -> str:
+            """Load system prompt from specified agent file"""
+            prompt_file = Path(self.agent_file)
             
-            data = response.json()
+            if not prompt_file.exists():
+                raise FileNotFoundError(f"File {prompt_file} not found. Please create this file with the system prompt.")
             
-            if 'choices' in data and len(data['choices']) > 0:
-                return data['choices'][0]['message']['content']
-            else:
-                return "❌ Error: Unexpected response from Blackbox API"
+            try:
+                with open(prompt_file, 'r', encoding='utf-8') as f:
+                    content = f.read().strip()
+                    if not content:
+                        raise ValueError(f"File {prompt_file} is empty. Please add a system prompt.")
+                    return content
+            except Exception as e:
+                raise RuntimeError(f"Error reading file {prompt_file}: {e}")
+        
+        def _get_api_key(self) -> Optional[str]:
+            """Get API key from environment variables"""
+            return os.getenv('BLACKBOX_API_KEY')
+        
+        def call_blackbox_api(self, user_prompt: str) -> str:
+            """Call Blackbox API with user prompt"""
+            api_key = self._get_api_key()
+            
+            if not api_key:
+                return "❌ Error: Blackbox API key not configured. Add BLACKBOX_API_KEY to your environment variables."
+            
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {api_key}'
+            }
+            
+            payload = {
+                'model': 'blackboxai/anthropic/claude-sonnet-4',
+                'messages': [
+                    {
+                        'role': 'system',
+                        'content': self.system_prompt
+                    },
+                    {
+                        'role': 'user', 
+                        'content': user_prompt
+                    }
+                ],
+                'temperature': 0.7,
+                'max_tokens': 1000,
+                'stream': False
+            }
+            
+            try:
+                response = requests.post(self.api_url, headers=headers, json=payload, timeout=30)
+                response.raise_for_status()
                 
-        except requests.exceptions.RequestException as e:
-            return f"❌ API connection error: {e}"
-        except json.JSONDecodeError as e:
-            return f"❌ JSON decoding error: {e}"
-        except Exception as e:
-            return f"❌ Unexpected error: {e}"
+                data = response.json()
+                
+                if 'choices' in data and len(data['choices']) > 0:
+                    return data['choices'][0]['message']['content']
+                else:
+                    return "❌ Error: Unexpected response from Blackbox API"
+                    
+            except requests.exceptions.RequestException as e:
+                return f"❌ API connection error: {e}"
+            except json.JSONDecodeError as e:
+                return f"❌ JSON decoding error: {e}"
+            except Exception as e:
+                return f"❌ Unexpected error: {e}"
 
 def choose_agent() -> str:
     """Allow user to choose which agent to use"""
