@@ -22,16 +22,16 @@ from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
 
 # Import our components
-from main import BlackboxMentor, load_env_file
-from database_operations import (
+from .main import BlackboxMentor, load_env_file
+from .database_operations import (
     get_db, create_tables, get_user_by_username, create_session, save_interaction,
     process_curator_analysis, get_user_skill_progression, populate_initial_data,
     create_flashcard, get_due_flashcards, get_flashcard_by_id, update_flashcard_schedule,
     create_review_session, get_user_review_history, get_user_flashcard_stats,
     get_flashcards_by_skill, batch_create_flashcards, delete_flashcard
 )
-from spaced_repetition import SpacedRepetitionEngine, ReviewResult
-from memory_store import get_memory_store, ConversationMemory
+from .spaced_repetition import SpacedRepetitionEngine, ReviewResult
+from .memory_store import get_memory_store, ConversationMemory
 
 # Import new PydanticAI mentor agent
 try:
