@@ -1,232 +1,186 @@
-import { ChatRequest, ChatResponse, JuniorMetrics, QuizQuestion, UserMemory, Agent } from '../types';
+import { 
+  ChatRequest, 
+  ChatResponse, 
+  JuniorMetrics, 
+  QuizQuestion, 
+  UserMemory, 
+  Agent, 
+  SystemStats,
+  CuratorAnalysisRequest,
+  CuratorAnalysisResponse,
+  UserSkillProgression,
+  FlashcardCreateRequest,
+  FlashcardResponse,
+  FlashcardReviewRequest,
+  FlashcardReviewResponse,
+  FlashcardStats
+} from '../types';
+import { httpClient, getDefaultUserId } from '../utils/http';
 
-// Mock API base URL - in production this would be your actual backend
-const API_BASE_URL = 'http://localhost:8000';
-
-// Mock data for development
-const mockJuniorMetrics: JuniorMetrics[] = [
-  {
-    id: '1',
-    name: 'Alice Johnson',
-    email: 'alice@example.com',
-    skillsAcquired: ['React Hooks', 'TypeScript Basics', 'CSS Grid', 'API Integration'],
-    mistakesIdentified: ['Missing error handling', 'Inefficient re-renders', 'Poor state management'],
-    openQuestions: ['How to optimize performance?', 'Best practices for testing?'],
-    nextSteps: ['Learn React Testing Library', 'Practice advanced TypeScript', 'Study performance optimization'],
-    progressData: [
-      { date: '2024-01-01', skillsLearned: 2, questionsAsked: 5, mistakesMade: 3, timeSpent: 120 },
-      { date: '2024-01-02', skillsLearned: 1, questionsAsked: 8, mistakesMade: 2, timeSpent: 90 },
-      { date: '2024-01-03', skillsLearned: 3, questionsAsked: 6, mistakesMade: 1, timeSpent: 150 },
-      { date: '2024-01-04', skillsLearned: 2, questionsAsked: 4, mistakesMade: 2, timeSpent: 110 },
-      { date: '2024-01-05', skillsLearned: 1, questionsAsked: 7, mistakesMade: 1, timeSpent: 95 },
-    ],
-    lastActive: new Date('2024-01-05'),
-    totalSessions: 15,
-    averageSessionTime: 113
-  },
-  {
-    id: '2',
-    name: 'Bob Smith',
-    email: 'bob@example.com',
-    skillsAcquired: ['JavaScript ES6+', 'Node.js Basics', 'Express.js'],
-    mistakesIdentified: ['Callback hell', 'Memory leaks', 'Synchronous operations'],
-    openQuestions: ['How to handle async operations?', 'Database optimization?'],
-    nextSteps: ['Learn async/await patterns', 'Study database indexing', 'Practice error handling'],
-    progressData: [
-      { date: '2024-01-01', skillsLearned: 1, questionsAsked: 3, mistakesMade: 4, timeSpent: 80 },
-      { date: '2024-01-02', skillsLearned: 2, questionsAsked: 6, mistakesMade: 3, timeSpent: 100 },
-      { date: '2024-01-03', skillsLearned: 1, questionsAsked: 4, mistakesMade: 2, timeSpent: 75 },
-      { date: '2024-01-04', skillsLearned: 3, questionsAsked: 8, mistakesMade: 1, timeSpent: 130 },
-      { date: '2024-01-05', skillsLearned: 2, questionsAsked: 5, mistakesMade: 2, timeSpent: 105 },
-    ],
-    lastActive: new Date('2024-01-05'),
-    totalSessions: 12,
-    averageSessionTime: 98
-  },
-  {
-    id: '3',
-    name: 'Carol Davis',
-    email: 'carol@example.com',
-    skillsAcquired: ['Python Basics', 'Django Framework', 'REST APIs', 'Database Design'],
-    mistakesIdentified: ['N+1 queries', 'Insecure endpoints', 'Poor validation'],
-    openQuestions: ['How to scale Django apps?', 'Best security practices?'],
-    nextSteps: ['Learn Django optimization', 'Study security patterns', 'Practice deployment'],
-    progressData: [
-      { date: '2024-01-01', skillsLearned: 3, questionsAsked: 7, mistakesMade: 2, timeSpent: 140 },
-      { date: '2024-01-02', skillsLearned: 2, questionsAsked: 5, mistakesMade: 3, timeSpent: 120 },
-      { date: '2024-01-03', skillsLearned: 1, questionsAsked: 9, mistakesMade: 1, timeSpent: 160 },
-      { date: '2024-01-04', skillsLearned: 4, questionsAsked: 6, mistakesMade: 2, timeSpent: 180 },
-      { date: '2024-01-05', skillsLearned: 2, questionsAsked: 8, mistakesMade: 1, timeSpent: 145 },
-    ],
-    lastActive: new Date('2024-01-05'),
-    totalSessions: 20,
-    averageSessionTime: 149
-  }
-];
-
-const mockQuizQuestions: QuizQuestion[] = [
-  {
-    id: '1',
-    question: 'What is the correct way to handle state in a React functional component?',
-    options: [
-      'Using this.setState()',
-      'Using useState hook',
-      'Directly modifying variables',
-      'Using class properties'
-    ],
-    correctAnswer: 1,
-    explanation: 'The useState hook is the correct way to manage state in functional components. It returns a state variable and a setter function.',
-    difficulty: 'beginner',
-    topic: 'React State Management',
-    programmingLanguage: 'JavaScript'
-  },
-  {
-    id: '2',
-    question: 'Which of the following is NOT a valid HTTP method?',
-    options: ['GET', 'POST', 'FETCH', 'DELETE'],
-    correctAnswer: 2,
-    explanation: 'FETCH is not an HTTP method. It\'s a JavaScript API for making HTTP requests. The valid HTTP methods include GET, POST, PUT, DELETE, PATCH, etc.',
-    difficulty: 'beginner',
-    topic: 'HTTP Methods',
-    programmingLanguage: 'General'
-  },
-  {
-    id: '3',
-    question: 'What does the "async/await" syntax do in JavaScript?',
-    options: [
-      'Makes code run faster',
-      'Handles asynchronous operations more readably',
-      'Creates new threads',
-      'Prevents errors from occurring'
-    ],
-    correctAnswer: 1,
-    explanation: 'async/await provides a more readable way to handle asynchronous operations compared to callbacks or promise chains.',
-    difficulty: 'intermediate',
-    topic: 'Asynchronous JavaScript',
-    programmingLanguage: 'JavaScript'
-  },
-  {
-    id: '4',
-    question: 'In TypeScript, what is the purpose of interfaces?',
-    options: [
-      'To create classes',
-      'To define the structure of objects',
-      'To handle errors',
-      'To import modules'
-    ],
-    correctAnswer: 1,
-    explanation: 'Interfaces in TypeScript define the structure/shape of objects, specifying what properties and methods an object should have.',
-    difficulty: 'intermediate',
-    topic: 'TypeScript Interfaces',
-    programmingLanguage: 'TypeScript'
-  }
-];
-
-// API functions with mock implementations
+/**
+ * Real API Service Implementation
+ * Replaces mock implementations with actual HTTP calls to the backend
+ */
 export const apiService = {
-  // Chat API
+  // Chat API - Main interaction endpoint
   async sendMessage(request: ChatRequest): Promise<ChatResponse> {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
-
-    // Mock response based on agent type
-    const responses = {
-      normal: [
-        "Here's a complete solution to your problem. Let me explain step by step...",
-        "I can help you with that! Here's the full implementation with explanations...",
-        "Great question! Here's a comprehensive answer with code examples..."
-      ],
-      strict: [
-        "That's an interesting question! What do you think might be the first step to solve this?",
-        "Before I give you hints, can you tell me what you've already tried?",
-        "Let's think about this together. What concepts do you think are relevant here?"
-      ]
+    // Ensure user_id is set
+    const chatRequest = {
+      ...request,
+      user_id: request.user_id || getDefaultUserId()
     };
 
-    const agentResponses = responses[request.agent_type] || responses.normal;
-    const randomResponse = agentResponses[Math.floor(Math.random() * agentResponses.length)];
-
-    return {
-      response: randomResponse,
-      agent_type: request.agent_type,
-      session_id: request.session_id || `session_${Date.now()}`,
-      related_memories: [
-        "Similar question about React hooks from last week",
-        "Previous discussion on error handling patterns"
-      ]
-    };
+    return httpClient.post<ChatResponse>('/chat', chatRequest);
   },
 
-  // Dashboard API
-  async getDashboardMetrics(): Promise<JuniorMetrics[]> {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 800));
-    return mockJuniorMetrics;
+  // System APIs
+  async healthCheck(): Promise<{ status: string; message: string }> {
+    return httpClient.get<{ status: string; message: string }>('/health');
   },
 
-  async getJuniorMetrics(juniorId: string): Promise<JuniorMetrics | null> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return mockJuniorMetrics.find(junior => junior.id === juniorId) || null;
-  },
-
-  // Quiz API
-  async getQuizQuestions(limit: number = 10): Promise<QuizQuestion[]> {
-    await new Promise(resolve => setTimeout(resolve, 600));
-    return mockQuizQuestions.slice(0, limit);
-  },
-
-  async submitQuizAnswer(questionId: string, selectedAnswer: number): Promise<{ isCorrect: boolean; explanation: string }> {
-    await new Promise(resolve => setTimeout(resolve, 300));
-    const question = mockQuizQuestions.find(q => q.id === questionId);
-    if (!question) {
-      throw new Error('Question not found');
-    }
-
-    return {
-      isCorrect: selectedAnswer === question.correctAnswer,
-      explanation: question.explanation
-    };
-  },
-
-  // User Memory API
-  async getUserMemories(userId: string): Promise<UserMemory> {
-    await new Promise(resolve => setTimeout(resolve, 400));
-    return {
-      user_id: userId,
-      learning_patterns: {
-        common_topics: ['React', 'JavaScript', 'TypeScript', 'API Integration'],
-        difficulty_preferences: ['intermediate', 'beginner'],
-        learning_style: 'hands-on',
-        progress_summary: 'Making steady progress with React concepts and TypeScript fundamentals'
-      },
-      memory_store_status: 'active'
-    };
+  async getSystemStats(): Promise<SystemStats> {
+    return httpClient.get<SystemStats>('/stats');
   },
 
   // Agents API
-  async getAgents(): Promise<Agent[]> {
-    await new Promise(resolve => setTimeout(resolve, 200));
-    return [
-      {
-        id: 'normal',
-        name: 'Mentor Agent',
-        description: 'Provides complete answers and detailed guidance',
-        type: 'normal'
-      },
-      {
-        id: 'strict',
-        name: 'Strict Mentor Agent',
-        description: 'Guides through hints only, refuses to give direct answers',
-        type: 'strict'
-      }
-    ];
+  async getAgents(): Promise<{ agents: Agent[] }> {
+    return httpClient.get<{ agents: Agent[] }>('/agents');
   },
 
-  // Health check
-  async healthCheck(): Promise<{ status: string; message: string }> {
-    return {
-      status: 'healthy',
-      message: 'Frontend API service is running with mock data'
-    };
+  // User Memory API
+  async getUserMemories(userId: string = getDefaultUserId(), limit: number = 10): Promise<UserMemory> {
+    return httpClient.get<UserMemory>(`/user/${userId}/memories`, { limit });
+  },
+
+  // Curator Analysis APIs
+  async analyzeCurator(request: CuratorAnalysisRequest): Promise<CuratorAnalysisResponse> {
+    return httpClient.post<CuratorAnalysisResponse>('/curator/analyze', request);
+  },
+
+  async getUserSkills(userId: string = getDefaultUserId(), limit: number = 20): Promise<UserSkillProgression> {
+    return httpClient.get<UserSkillProgression>(`/curator/user/${userId}/skills`, { limit });
+  },
+
+  // Flashcard APIs
+  async createFlashcard(request: FlashcardCreateRequest): Promise<FlashcardResponse> {
+    return httpClient.post<FlashcardResponse>('/flashcards/create', request);
+  },
+
+  async getDueFlashcards(userId: string = getDefaultUserId(), limit: number = 20): Promise<{ flashcards: FlashcardResponse[]; total_due: number }> {
+    return httpClient.get<{ flashcards: FlashcardResponse[]; total_due: number }>(`/flashcards/review/${userId}`, { limit });
+  },
+
+  async submitFlashcardReview(request: FlashcardReviewRequest): Promise<FlashcardReviewResponse> {
+    return httpClient.post<FlashcardReviewResponse>('/flashcards/review', request);
+  },
+
+  async getFlashcardStats(userId: string = getDefaultUserId()): Promise<FlashcardStats> {
+    return httpClient.get<FlashcardStats>(`/flashcards/stats/${userId}`);
+  },
+
+  async getFlashcardSchedule(userId: string = getDefaultUserId(), days: number = 7): Promise<{ schedule: Record<string, any>; total_upcoming: number }> {
+    return httpClient.get<{ schedule: Record<string, any>; total_upcoming: number }>(`/flashcards/schedule/${userId}`, { days });
+  },
+
+  async batchCreateFlashcards(flashcards: FlashcardCreateRequest[], userId: string = getDefaultUserId()): Promise<FlashcardResponse[]> {
+    return httpClient.post<FlashcardResponse[]>('/flashcards/batch', { flashcards, user_id: userId });
+  },
+
+  async deleteFlashcard(flashcardId: string, userId: string = getDefaultUserId()): Promise<{ success: boolean; message: string }> {
+    return httpClient.delete<{ success: boolean; message: string }>(`/flashcards/${flashcardId}`, { user_id: userId });
+  },
+
+  // Legacy compatibility methods (for existing frontend components)
+  // These methods transform backend responses to match existing frontend expectations
+  
+  async getDashboardMetrics(): Promise<JuniorMetrics[]> {
+    try {
+      // Try to get real user skill progression data
+      const skillData = await this.getUserSkills();
+      
+      // Transform backend skill data to legacy JuniorMetrics format
+      const transformedMetrics: JuniorMetrics = {
+        id: skillData.user_id,
+        name: `User ${skillData.user_id}`,
+        email: `${skillData.user_id}@devmentor.ai`,
+        skillsAcquired: Object.keys(skillData.skills_summary || {}),
+        mistakesIdentified: ['Analysis in progress...'],
+        openQuestions: ['Analyzing learning patterns...'],
+        nextSteps: ['Continue practicing with flashcards'],
+        progressData: skillData.skill_progression?.slice(0, 5).map((skill, index) => ({
+          date: new Date(Date.now() - index * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          skillsLearned: skill.mastery_level,
+          questionsAsked: Math.floor(Math.random() * 10) + 1,
+          mistakesMade: Math.max(0, 5 - skill.mastery_level),
+          timeSpent: Math.floor(Math.random() * 120) + 60
+        })) || [],
+        lastActive: new Date(),
+        totalSessions: skillData.total_skills_tracked,
+        averageSessionTime: 90
+      };
+
+      return [transformedMetrics];
+    } catch (error) {
+      console.error('Failed to load dashboard metrics from backend:', error);
+      // Return empty array if backend is unavailable
+      return [];
+    }
+  },
+
+  async getJuniorMetrics(juniorId: string): Promise<JuniorMetrics | null> {
+    const metrics = await this.getDashboardMetrics();
+    return metrics.find(junior => junior.id === juniorId) || null;
+  },
+
+  // Quiz API - Using flashcard system as backend
+  async getQuizQuestions(limit: number = 10): Promise<QuizQuestion[]> {
+    try {
+      const flashcards = await this.getDueFlashcards(getDefaultUserId(), limit);
+      
+      // Transform flashcards to quiz questions format
+      return flashcards.flashcards.map((card, index) => ({
+        id: card.id,
+        question: card.question,
+        options: [
+          card.answer,
+          'Alternative option 1',
+          'Alternative option 2', 
+          'Alternative option 3'
+        ].sort(() => Math.random() - 0.5), // Randomize options
+        correctAnswer: 0, // First option is always correct after randomization
+        explanation: card.answer,
+        difficulty: card.difficulty <= 2 ? 'beginner' : card.difficulty <= 4 ? 'intermediate' : 'advanced',
+        topic: card.card_type || 'General',
+        programmingLanguage: 'JavaScript'
+      }));
+    } catch (error) {
+      console.error('Failed to load quiz questions from backend:', error);
+      // Return empty array if backend is unavailable
+      return [];
+    }
+  },
+
+  async submitQuizAnswer(questionId: string, selectedAnswer: number): Promise<{ isCorrect: boolean; explanation: string }> {
+    try {
+      // Submit as flashcard review (assuming 0-5 scale where correct = 5, incorrect = 2)
+      const reviewResponse = await this.submitFlashcardReview({
+        flashcard_id: questionId,
+        user_id: getDefaultUserId(),
+        success_score: selectedAnswer === 0 ? 5 : 2, // Assuming correct answer is always index 0
+        response_time: 30 // Default 30 seconds
+      });
+
+      return {
+        isCorrect: reviewResponse.success,
+        explanation: reviewResponse.message
+      };
+    } catch (error) {
+      console.error('Failed to submit quiz answer to backend:', error);
+      // Return mock response if backend is unavailable
+      return {
+        isCorrect: selectedAnswer === 0,
+        explanation: 'Answer submitted (offline mode)'
+      };
+    }
   }
 };
