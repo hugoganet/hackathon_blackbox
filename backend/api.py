@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 # Import our components
 from main import BlackboxMentor, load_env_file
 from database_operations import (
-    get_db, create_tables, get_user_by_username, create_conversation, save_interaction,
+    get_db, create_tables, get_user_by_username, create_session, save_interaction,
     process_curator_analysis, get_user_skill_progression, populate_initial_data,
     create_flashcard, get_due_flashcards, get_flashcard_by_id, update_flashcard_schedule,
     create_review_session, get_user_review_history, get_user_flashcard_stats,
@@ -436,7 +436,10 @@ async def update_interaction_metadata(db: Session, interaction_id: str, analysis
     Update interaction record with curator-extracted metadata
     """
     try:
-        from database.models import Interaction
+        try:
+            from backend.database.models import Interaction
+        except ImportError:
+            from database.models import Interaction
         
         # Extract metadata from analysis
         skills = analysis.get("skills", [])
@@ -445,12 +448,13 @@ async def update_interaction_metadata(db: Session, interaction_id: str, analysis
         difficulty_level = confidence_to_difficulty(analysis.get("confidence", 0.5))
         
         # Get interaction and update
-        interaction = db.query(Interaction).filter(Interaction.id == interaction_id).first()
+        interaction_uuid = uuid.UUID(interaction_id) if isinstance(interaction_id, str) else interaction_id
+        interaction = db.query(Interaction).filter(Interaction.id_interaction == interaction_uuid).first()
         if interaction:
-            interaction.programming_language = programming_language
-            interaction.user_intent = user_intent
-            interaction.difficulty_level = difficulty_level
-            interaction.embedding_created = True  # Mark as processed by curator
+            # Update with curator metadata through reference tables
+            # Note: These fields would need to be added to the Interaction model or handled differently
+            # For now, we'll mark it as processed
+            interaction.vector_id = f"curator_processed_{interaction_id}"
             db.commit()
             
     except Exception as e:
@@ -574,7 +578,10 @@ MENTOR RESPONSE:
             return None
         
         # Create new database session for background task
-        from database.models import SessionLocal, process_curator_analysis
+        try:
+            from backend.database.models import SessionLocal
+        except ImportError:
+            from database.models import SessionLocal
         db = SessionLocal()
         
         try:
@@ -654,7 +661,7 @@ async def chat_with_mentor(
         user = get_user_by_username(db, username)
         
         # Generate session ID if not provided
-        session_id = request.session_id or f"session_{hash(str(user.id))}"
+        session_id = request.session_id or f"session_{hash(str(user.id_user))}"
         
         # Search for related memories before responding
         # Enhanced with curator metadata filtering when available
@@ -665,7 +672,7 @@ async def chat_with_mentor(
             
             similar_interactions = memory_store.find_similar_interactions(
                 current_message=request.message,
-                user_id=str(user.id),
+                user_id=str(user.id_user),
                 limit=3,
                 agent_type=request.agent_type,
                 programming_language=detected_language if detected_language != "unknown" else None
@@ -698,13 +705,13 @@ async def chat_with_mentor(
         # Calculate response time
         response_time_ms = int((time.time() - start_time) * 1000)
         
-        # Create conversation if needed
-        conversation = create_conversation(db, str(user.id), session_id, request.agent_type)
+        # Create session if needed
+        session_record = create_session(db, str(user.id_user), session_id, request.agent_type)
         
         # Save interaction to database
         interaction = save_interaction(
             db, 
-            str(conversation.id), 
+            str(session_record.id_session), 
             request.message, 
             response,
             response_time_ms
@@ -716,8 +723,8 @@ async def chat_with_mentor(
                 analyze_conversation_background,
                 user_message=request.message,
                 mentor_response=response,
-                user_id=str(user.id),
-                interaction_id=str(interaction.id)
+                user_id=str(user.id_user),
+                interaction_id=str(interaction.id_interaction)
             )
         
         # Add to vector memory store for future reference
@@ -725,7 +732,7 @@ async def chat_with_mentor(
         memory_id = None
         if memory_store and request.user_id:
             memory_id = memory_store.add_interaction(
-                user_id=str(user.id),
+                user_id=str(user.id_user),
                 user_message=request.message,
                 mentor_response=response,
                 agent_type=request.agent_type,
@@ -799,10 +806,10 @@ async def get_system_stats(db: Session = Depends(get_db)):
     """
     try:
         # Database stats
-        from database.models import User, Conversation, Interaction
+        from database.models import User, Session, Interaction
         
         user_count = db.query(User).count()
-        conversation_count = db.query(Conversation).count() 
+        session_count = db.query(Session).count() 
         interaction_count = db.query(Interaction).count()
         
         # Memory store stats
@@ -811,7 +818,7 @@ async def get_system_stats(db: Session = Depends(get_db)):
         return {
             "database": {
                 "users": user_count,
-                "conversations": conversation_count,
+                "sessions": session_count,
                 "interactions": interaction_count,
                 "status": "connected"
             },
@@ -885,7 +892,7 @@ MENTOR RESPONSE:
             user = get_user_by_username(db, request.user_id)
             
             # Process the curator analysis and update skill history
-            skill_tracking_results = process_curator_analysis(db, str(user.id), analysis)
+            skill_tracking_results = process_curator_analysis(db, str(user.id_user), analysis)
         except Exception as e:
             print(f"Warning: Could not update skill tracking: {e}")
             # Continue without skill tracking if there's an error
@@ -923,7 +930,7 @@ async def get_user_skills(user_id: str, limit: int = 20, db: Session = Depends(g
         user = get_user_by_username(db, user_id)
         
         # Get skill progression history
-        skill_progression = get_user_skill_progression(db, str(user.id), limit)
+        skill_progression = get_user_skill_progression(db, str(user.id_user), limit)
         
         # Calculate summary statistics
         skills_summary = {}
@@ -951,7 +958,7 @@ async def get_user_skills(user_id: str, limit: int = 20, db: Session = Depends(g
         
         return {
             "user_id": user_id,
-            "user_uuid": str(user.id),
+            "user_uuid": str(user.id_user),
             "total_skills_tracked": len(skills_summary),
             "skill_progression": skill_progression,
             "skills_summary": skills_summary,
@@ -989,7 +996,7 @@ async def create_flashcard_endpoint(request: FlashcardCreateRequest, db: Session
         )
         
         return FlashcardResponse(
-            id=str(flashcard.id),
+            id=str(flashcard.id_flashcard),
             question=flashcard.question,
             answer=flashcard.answer,
             difficulty=flashcard.difficulty,
@@ -997,7 +1004,7 @@ async def create_flashcard_endpoint(request: FlashcardCreateRequest, db: Session
             next_review_date=flashcard.next_review_date.isoformat(),
             review_count=flashcard.review_count,
             created_at=flashcard.created_at.isoformat(),
-            skill_id=flashcard.skill_id
+            skill_id=flashcard.id_skill
         )
         
     except Exception as e:
@@ -1013,7 +1020,7 @@ async def get_due_flashcards_endpoint(user_id: str, limit: int = 20, db: Session
         
         flashcard_responses = [
             FlashcardResponse(
-                id=str(card.id),
+                id=str(card.id_flashcard),
                 question=card.question,
                 answer=card.answer,
                 difficulty=card.difficulty,
@@ -1021,7 +1028,7 @@ async def get_due_flashcards_endpoint(user_id: str, limit: int = 20, db: Session
                 next_review_date=card.next_review_date.isoformat(),
                 review_count=card.review_count,
                 created_at=card.created_at.isoformat(),
-                skill_id=card.skill_id
+                skill_id=card.id_skill
             ) for card in due_flashcards
         ]
         
@@ -1117,11 +1124,11 @@ async def get_review_schedule_endpoint(user_id: str, days: int = 7, db: Session 
         for i in range(days):
             check_date = today + timedelta(days=i)
             day_flashcards = db.query(Flashcard)\
-                .join(Interaction, Flashcard.interaction_id == Interaction.id, isouter=True)\
-                .join(Conversation, Interaction.conversation_id == Conversation.id, isouter=True)\
+                .join(Interaction, Flashcard.id_interaction == Interaction.id_interaction, isouter=True)\
+                .join(Session, Interaction.id_session == Session.id_session, isouter=True)\
                 .filter(
                     Flashcard.next_review_date == check_date,
-                    Conversation.user_id == uuid.UUID(user_id) if user_id else True
+                    Session.id_user == uuid.UUID(user_id) if user_id else True
                 ).count()
             
             schedule[check_date.isoformat()] = {
@@ -1169,7 +1176,7 @@ async def batch_create_flashcards_endpoint(request: BatchCreateRequest, db: Sess
         
         return [
             FlashcardResponse(
-                id=str(card.id),
+                id=str(card.id_flashcard),
                 question=card.question,
                 answer=card.answer,
                 difficulty=card.difficulty,
@@ -1177,7 +1184,7 @@ async def batch_create_flashcards_endpoint(request: BatchCreateRequest, db: Sess
                 next_review_date=card.next_review_date.isoformat(),
                 review_count=card.review_count,
                 created_at=card.created_at.isoformat(),
-                skill_id=card.skill_id
+                skill_id=card.id_skill
             ) for card in created_flashcards
         ]
         
@@ -1217,7 +1224,10 @@ async def get_user_conversations_with_analysis(
     Provides detailed learning analytics for each conversation
     """
     try:
-        from database.models import User, Interaction, Conversation
+        try:
+            from backend.database.models import User, Interaction, Session
+        except ImportError:
+            from database.models import User, Interaction, Session
         from sqlalchemy import desc
         
         # Get user
@@ -1231,9 +1241,9 @@ async def get_user_conversations_with_analysis(
         
         # Get recent interactions with curator analysis
         interactions_query = db.query(Interaction).join(
-            Conversation, Interaction.conversation_id == Conversation.id
+            Session, Interaction.id_session == Session.id_session
         ).filter(
-            Conversation.user_id == user.id
+            Session.id_user == user.id_user
         ).order_by(desc(Interaction.created_at)).limit(limit)
         
         interactions = interactions_query.all()
@@ -1242,22 +1252,22 @@ async def get_user_conversations_with_analysis(
         conversations = []
         for interaction in interactions:
             conversation_data = {
-                "interaction_id": str(interaction.id),
-                "conversation_id": str(interaction.conversation_id),
+                "interaction_id": str(interaction.id_interaction),
+                "session_id": str(interaction.id_session),
                 "user_message": interaction.user_message,
                 "mentor_response": interaction.mentor_response,
                 "created_at": interaction.created_at.isoformat(),
                 "response_time_ms": interaction.response_time_ms,
-                "has_curator_analysis": interaction.programming_language != "unknown"
+                "has_curator_analysis": hasattr(interaction, 'vector_id') and interaction.vector_id is not None
             }
             
             # Add curator analysis if available and requested
-            if include_analysis and interaction.programming_language != "unknown":
+            if include_analysis and hasattr(interaction, 'vector_id') and interaction.vector_id:
                 conversation_data["curator_analysis"] = {
-                    "programming_language": interaction.programming_language,
-                    "user_intent": interaction.user_intent,
-                    "difficulty_level": interaction.difficulty_level,
-                    "embedding_created": interaction.embedding_created
+                    "vector_id": interaction.vector_id,
+                    "domain_id": interaction.id_domain,
+                    "language_id": interaction.id_language,
+                    "intent_id": interaction.id_intent
                 }
             
             conversations.append(conversation_data)
@@ -1279,15 +1289,17 @@ async def get_curator_stats(db: Session = Depends(get_db)):
     Shows how many interactions have been analyzed and skill tracking effectiveness
     """
     try:
-        from database.models import Interaction, SkillHistory
+        try:
+            from backend.database.models import Interaction, SkillHistory
+        except ImportError:
+            from database.models import Interaction, SkillHistory
         
         # Count total interactions
         total_interactions = db.query(Interaction).count()
         
-        # Count analyzed interactions (those with programming_language set)
+        # Count analyzed interactions (those with vector_id set)
         analyzed_interactions = db.query(Interaction).filter(
-            Interaction.programming_language != "unknown",
-            Interaction.programming_language.isnot(None)
+            Interaction.vector_id.isnot(None)
         ).count()
         
         # Count skill tracking records

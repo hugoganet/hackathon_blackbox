@@ -37,7 +37,7 @@ class User(Base):
     """
     __tablename__ = "users"
     
-    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+    id_user = Column(UUIDType, primary_key=True, default=uuid.uuid4)
     username = Column(String(50), unique=True, nullable=False)
     email = Column(String(255), unique=True, nullable=True)
     password_hash = Column(String(255), nullable=True)
@@ -47,67 +47,64 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     
     # Relationships
-    conversations = relationship("Conversation", back_populates="user")
+    sessions = relationship("Session", back_populates="user")
     skill_history = relationship("SkillHistory", back_populates="user")
 
-class Conversation(Base):
+class Session(Base):
     """
-    Conversation model - represents a chat session between user and mentor
+    Session model - represents a chat session between user and mentor
     """
-    __tablename__ = "conversations"
+    __tablename__ = "sessions"
     
-    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUIDType, ForeignKey("users.id"), nullable=False)
-    session_id = Column(String(255), nullable=False, index=True)
-    agent_type = Column(String(20), nullable=False)  # "normal" or "strict"
-    title = Column(String(255), nullable=True)  # Optional conversation title
+    id_session = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+    id_user = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
+    title = Column(String(255), nullable=True)  # Optional session title
+    agent_type = Column(String(20), nullable=False, default='normal')  # "normal", "strict", "curator", "flashcard"
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    ended_at = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
     
     # Relationships
-    user = relationship("User", back_populates="conversations")
-    interactions = relationship("Interaction", back_populates="conversation")
+    user = relationship("User", back_populates="sessions")
+    interactions = relationship("Interaction", back_populates="session")
 
 class Interaction(Base):
     """
-    Interaction model - individual message exchanges within a conversation
+    Interaction model - individual message exchanges within a session
     This data will be used to create embeddings for the vector store
     """
     __tablename__ = "interactions"
     
-    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
-    conversation_id = Column(UUIDType, ForeignKey("conversations.id"), nullable=False)
+    id_interaction = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+    id_session = Column(UUIDType, ForeignKey("sessions.id_session"), nullable=False)
     
     # Message content
     user_message = Column(Text, nullable=False)
     mentor_response = Column(Text, nullable=False)
     
-    # Context for vector store - proper foreign key relationships
-    intent_id = Column(Integer, ForeignKey("ref_intents.id"), nullable=True)
-    language_id = Column(Integer, ForeignKey("ref_languages.id"), nullable=True) 
-    domain_id = Column(Integer, ForeignKey("ref_domains.id"), nullable=True)
+    # Vector store integration
+    vector_id = Column(String(255), nullable=True)  # Reference to ChromaDB embedding
     
-    difficulty_level = Column(String(20), nullable=True)  # e.g., "beginner", "intermediate"
+    # Context for vector store - proper foreign key relationships
+    id_intent = Column(Integer, ForeignKey("ref_intents.id_intent"), nullable=True)
+    id_language = Column(Integer, ForeignKey("ref_languages.id_language"), nullable=True) 
+    id_domain = Column(Integer, ForeignKey("ref_domains.id_domain"), nullable=True)
     
     # Metadata
     response_time_ms = Column(Integer, nullable=True)  # API response time for monitoring
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Vector store integration
-    embedding_created = Column(Boolean, default=False)  # Track if embedding was created
-    
     # Relationships
-    conversation = relationship("Conversation", back_populates="interactions")
+    session = relationship("Session", back_populates="interactions")
     intent = relationship("RefIntent", back_populates="interactions")
     language = relationship("RefLanguage", back_populates="interactions")
     domain = relationship("RefDomain")
     
     # Table constraints - indexes for performance
     __table_args__ = (
-        Index('ix_interaction_intent_id', 'intent_id'),
-        Index('ix_interaction_language_id', 'language_id'),
-        Index('ix_interaction_domain_id', 'domain_id'),
+        Index('ix_interaction_intent_id', 'id_intent'),
+        Index('ix_interaction_language_id', 'id_language'),
+        Index('ix_interaction_domain_id', 'id_domain'),
     )
 
 class MemoryEntry(Base):
@@ -118,7 +115,7 @@ class MemoryEntry(Base):
     __tablename__ = "memory_entries"
     
     id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUIDType, ForeignKey("users.id"), nullable=False)
+    id_user = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
     
     # Learning insights
     concept = Column(String(100), nullable=False)  # e.g., "react_hooks", "async_await"
@@ -140,7 +137,7 @@ class RefDomain(Base):
     """
     __tablename__ = "ref_domains"
     
-    id = Column(Integer, primary_key=True)
+    id_domain = Column(Integer, primary_key=True)
     name = Column(String(50), nullable=False, unique=True)
     description = Column(Text)
     display_order = Column(Integer, default=0)
@@ -157,22 +154,14 @@ class RefLanguage(Base):
     """
     __tablename__ = "ref_languages"
     
-    id = Column(Integer, primary_key=True)
+    id_language = Column(Integer, primary_key=True)
     name = Column(String(50), nullable=False, unique=True)
-    category = Column(String(50), nullable=True)  # e.g., "programming", "markup", "query"
+    category = Column(String(30), nullable=True)  # e.g., "Frontend", "Backend", "Framework"
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationship to interactions
     interactions = relationship("Interaction", back_populates="language")
-    
-    # Table constraints - validation for categories
-    __table_args__ = (
-        CheckConstraint(
-            category.in_(['programming', 'markup', 'styling', 'query', 'scripting']),
-            name='valid_language_category'
-        ),
-    )
 
 class RefIntent(Base):
     """
@@ -181,7 +170,7 @@ class RefIntent(Base):
     """
     __tablename__ = "ref_intents"
     
-    id = Column(Integer, primary_key=True)
+    id_intent = Column(Integer, primary_key=True)
     name = Column(String(50), nullable=False, unique=True)
     description = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -195,10 +184,10 @@ class Skill(Base):
     """
     __tablename__ = "skills"
     
-    id = Column(Integer, primary_key=True)
+    id_skill = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False, unique=True)
     description = Column(Text)
-    domain_id = Column(Integer, ForeignKey("ref_domains.id"), nullable=False)
+    id_domain = Column(Integer, ForeignKey("ref_domains.id_domain"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
@@ -212,9 +201,9 @@ class SkillHistory(Base):
     """
     __tablename__ = "skill_history"
     
-    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUIDType, ForeignKey("users.id"), nullable=False)
-    skill_id = Column(Integer, ForeignKey("skills.id"), nullable=False)
+    id_history = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+    id_user = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
+    id_skill = Column(Integer, ForeignKey("skills.id_skill"), nullable=False)
     mastery_level = Column(Integer, nullable=False, default=1)
     snapshot_date = Column(Date, nullable=False, default=date.today)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -225,7 +214,7 @@ class SkillHistory(Base):
     
     # Table constraints
     __table_args__ = (
-        UniqueConstraint('user_id', 'skill_id', 'snapshot_date', name='skill_history_unique_daily'),
+        UniqueConstraint('id_user', 'id_skill', 'snapshot_date', name='skill_history_unique_daily'),
     )
 
 class Flashcard(Base):
@@ -234,7 +223,7 @@ class Flashcard(Base):
     """
     __tablename__ = "flashcards"
     
-    id = Column(UUIDType, primary_key=True, default=uuid.uuid4, name='id_flashcard')
+    id_flashcard = Column(UUIDType, primary_key=True, default=uuid.uuid4)
     question = Column(Text, nullable=False)
     answer = Column(Text, nullable=False)
     difficulty = Column(Integer, nullable=False, default=1)  # 1-5 scale
@@ -244,8 +233,8 @@ class Flashcard(Base):
     review_count = Column(Integer, nullable=False, default=0)
     
     # Foreign keys
-    interaction_id = Column(UUIDType, ForeignKey("interactions.id"), nullable=True)
-    skill_id = Column(Integer, ForeignKey("skills.id"), nullable=True)
+    id_interaction = Column(UUIDType, ForeignKey("interactions.id_interaction"), nullable=True)
+    id_skill = Column(Integer, ForeignKey("skills.id_skill"), nullable=True)
     
     # Relationships
     interaction = relationship("Interaction", backref="flashcards")
@@ -257,9 +246,9 @@ class ReviewSession(Base):
     """
     __tablename__ = "review_sessions"
     
-    id = Column(UUIDType, primary_key=True, default=uuid.uuid4, name='id_review')
-    user_id = Column(UUIDType, ForeignKey("users.id"), nullable=False)
-    flashcard_id = Column(UUIDType, ForeignKey("flashcards.id_flashcard"), nullable=False)
+    id_review = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+    id_user = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
+    id_flashcard = Column(UUIDType, ForeignKey("flashcards.id_flashcard"), nullable=False)
     success_score = Column(Integer, nullable=False)  # 0-5 scale
     response_time = Column(Integer, nullable=True)  # seconds
     review_date = Column(DateTime, default=datetime.utcnow)
