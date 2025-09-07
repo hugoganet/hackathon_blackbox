@@ -309,11 +309,16 @@ def populate_initial_data(db: Session):
 
 def create_or_get_language(db: Session, name: str, category: str = "programming") -> RefLanguage:
     """
-    Create or get programming language reference
+    Create or get programming language reference with case-insensitive lookup
     """
-    language = db.query(RefLanguage).filter(RefLanguage.name == name).first()
+    # Case-insensitive lookup to prevent duplicates like "JavaScript" vs "javascript"
+    language = db.query(RefLanguage).filter(
+        func.lower(RefLanguage.name) == name.lower()
+    ).first()
     if not language:
-        language = RefLanguage(name=name, category=category)
+        # Normalize language name to title case for consistency
+        normalized_name = name.title()
+        language = RefLanguage(name=normalized_name, category=category)
         db.add(language)
         db.commit()
         db.refresh(language)

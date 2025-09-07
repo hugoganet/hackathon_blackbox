@@ -3,7 +3,7 @@ Database models and configuration for Dev Mentor AI
 Uses PostgreSQL with SQLAlchemy for Railway deployment
 """
 
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Date, UniqueConstraint
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Date, UniqueConstraint, Index, CheckConstraint, func
 from sqlalchemy.orm import sessionmaker, Session, relationship, declarative_base
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime, date
@@ -85,9 +85,6 @@ class Interaction(Base):
     language_id = Column(Integer, ForeignKey("ref_languages.id_language"), nullable=True) 
     domain_id = Column(Integer, ForeignKey("ref_domains.id_domain"), nullable=True)
     
-    # Keep legacy fields for backward compatibility (will be deprecated)
-    user_intent = Column(String(100), nullable=True)  # DEPRECATED: use intent_id
-    programming_language = Column(String(50), nullable=True)  # DEPRECATED: use language_id
     difficulty_level = Column(String(20), nullable=True)  # e.g., "beginner", "intermediate"
     
     # Metadata
@@ -102,6 +99,13 @@ class Interaction(Base):
     intent = relationship("RefIntent", back_populates="interactions")
     language = relationship("RefLanguage", back_populates="interactions")
     domain = relationship("RefDomain")
+    
+    # Table constraints - indexes for performance
+    __table_args__ = (
+        Index('ix_interaction_intent_id', 'intent_id'),
+        Index('ix_interaction_language_id', 'language_id'),
+        Index('ix_interaction_domain_id', 'domain_id'),
+    )
 
 class MemoryEntry(Base):
     """
@@ -158,6 +162,14 @@ class RefLanguage(Base):
     
     # Relationship to interactions
     interactions = relationship("Interaction", back_populates="language")
+    
+    # Table constraints - validation for categories
+    __table_args__ = (
+        CheckConstraint(
+            category.in_(['programming', 'markup', 'styling', 'query', 'scripting']),
+            name='valid_language_category'
+        ),
+    )
 
 class RefIntent(Base):
     """
