@@ -60,7 +60,7 @@ const MentorPage: React.FC = () => {
   return (
     <div
       ref={containerRef}
-      className="h-screen flex bg-gray-50 relative select-none"
+      className="h-[calc(100vh-4rem)] flex bg-gray-50 relative select-none"
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}

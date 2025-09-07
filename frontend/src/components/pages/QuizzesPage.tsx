@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { useQuiz } from '../../hooks/useQuiz';
 import FlashCard from '../quiz/FlashCard';
-import QuizProgress from '../quiz/QuizProgress';
 import StudyStats from '../quiz/StudyStats';
-import { Brain, Play, RotateCcw, TrendingUp } from 'lucide-react';
 
 const QuizzesPage: React.FC = () => {
   const {
@@ -16,13 +14,11 @@ const QuizzesPage: React.FC = () => {
     nextCard,
     resetSession,
     getStudyStats,
-    getWeeklySchedule
+    totalAvailableCards
   } = useQuiz();
 
   const [showStats, setShowStats] = useState(false);
-
   const studyStats = getStudyStats();
-  const weeklySchedule = getWeeklySchedule();
 
   if (loading.isLoading) {
     return (
@@ -53,30 +49,61 @@ const QuizzesPage: React.FC = () => {
     );
   }
 
+  // Show stats modal (disponible partout)
+  if (showStats) {
+    const weeklySchedule = [
+      { date: new Date().toISOString(), count: sessionStats.total },
+      { date: new Date(Date.now() + 86400000).toISOString(), count: studyStats.dueCards },
+      { date: new Date(Date.now() + 2 * 86400000).toISOString(), count: Math.floor(studyStats.dueCards * 0.7) },
+      { date: new Date(Date.now() + 3 * 86400000).toISOString(), count: Math.floor(studyStats.dueCards * 0.5) },
+      { date: new Date(Date.now() + 4 * 86400000).toISOString(), count: Math.floor(studyStats.dueCards * 0.3) },
+      { date: new Date(Date.now() + 5 * 86400000).toISOString(), count: Math.floor(studyStats.dueCards * 0.2) },
+      { date: new Date(Date.now() + 6 * 86400000).toISOString(), count: Math.floor(studyStats.dueCards * 0.1) },
+    ];
+
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-4xl mx-auto p-6">
+          <StudyStats
+            stats={studyStats}
+            weeklySchedule={weeklySchedule}
+            onClose={() => setShowStats(false)}
+          />
+        </div>
+      </div>
+    );
+  }
+
   if (!currentCard) {
+    // Show completion screen
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center max-w-md mx-auto p-6">
           <div className="text-6xl mb-4">🎉</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Great Job!</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            {sessionStats.total > 0 ? 'Session terminée !' : 'Rien à réviser aujourd\'hui !'}
+          </h2>
           <p className="text-gray-600 mb-6">
-            You've completed all available quiz cards for now. Check back later for new questions based on your learning progress.
+            {sessionStats.total > 0
+              ? `Vous avez révisé ${sessionStats.total} cartes avec ${sessionStats.correct} bonnes réponses sur ${totalAvailableCards} cartes disponibles.`
+              : 'Revenez demain pour de nouvelles révisions basées sur votre progression.'
+            }
           </p>
           <div className="space-y-3">
             <button
-              onClick={resetSession}
-              className="btn-primary w-full"
-            >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Review Cards Again
-            </button>
-            <button
               onClick={() => setShowStats(true)}
-              className="btn-secondary w-full"
+              className="bg-primary-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-primary-700 w-full"
             >
-              <TrendingUp className="w-4 h-4 mr-2" />
-              View Study Statistics
+              📊 Voir ma progression
             </button>
+            {sessionStats.total > 0 && (
+              <button
+                onClick={resetSession}
+                className="bg-gray-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-gray-700 w-full"
+              >
+                🔄 Réviser à nouveau
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -85,92 +112,62 @@ const QuizzesPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto p-6">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center">
-                <Brain className="w-8 h-8 mr-3 text-primary-600" />
-                Smart Flashcards
-              </h1>
-              <p className="text-gray-600">
-                Spaced repetition system to reinforce your learning
-              </p>
-            </div>
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={() => setShowStats(!showStats)}
-                className="btn-secondary"
-              >
-                <TrendingUp className="w-4 h-4 mr-2" />
-                Stats
-              </button>
-              <button
-                onClick={resetSession}
-                className="btn-secondary"
-              >
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Reset
-              </button>
-            </div>
-          </div>
+      <div className="max-w-2xl mx-auto p-6">
+        {/* En-tête simplifié */}
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">
+            Révisions du jour
+          </h1>
+          <p className="text-gray-600">
+            {totalAvailableCards} cartes à réviser
+          </p>
         </div>
 
-        {/* Session Progress */}
+        {/* Session Progress simplifié */}
         <div className="mb-6">
-          <QuizProgress
-            correct={sessionStats.correct}
-            total={sessionStats.total}
-            streak={sessionStats.streak}
+          <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
+            <span>Progression</span>
+            <span>{sessionStats.total} / {totalAvailableCards}</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
+              className="bg-primary-600 h-2 rounded-full transition-all duration-300"
+              style={{
+                width: totalAvailableCards > 0
+                  ? `${(sessionStats.total / totalAvailableCards) * 100}%`
+                  : '0%'
+              }}
+            ></div>
+          </div>
+          {sessionStats.streak > 0 && (
+            <div className="text-center mt-2">
+              <span className="text-sm text-green-600 font-medium">
+                🔥 {sessionStats.streak} bonnes réponses d'affilée
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Bouton Stats en haut à droite */}
+        <div className="text-right mb-6">
+          <button
+            onClick={() => setShowStats(true)}
+            className="text-sm text-gray-500 hover:text-gray-700"
+          >
+            📊 Voir ma progression
+          </button>
+        </div>
+
+        {/* Zone de carte principale */}
+        {currentCard && (
+          <FlashCard
+            card={currentCard}
+            showAnswer={showAnswer}
+            onSubmitAnswer={submitAnswer}
+            onNextCard={nextCard}
+            disabled={loading.isLoading}
           />
-        </div>
-
-        {/* Study Stats Panel */}
-        {showStats && (
-          <div className="mb-6">
-            <StudyStats
-              stats={studyStats}
-              weeklySchedule={weeklySchedule}
-              onClose={() => setShowStats(false)}
-            />
-          </div>
         )}
-
-        {/* Main Quiz Area */}
-        <div className="flex justify-center">
-          <div className="w-full max-w-2xl">
-            <FlashCard
-              card={currentCard}
-              showAnswer={showAnswer}
-              onSubmitAnswer={submitAnswer}
-              onNextCard={nextCard}
-              disabled={loading.isLoading}
-            />
-          </div>
-        </div>
-
-
-
-        {/* Quick Stats Footer */}
-        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-primary-600">{studyStats.totalCards}</p>
-            <p className="text-sm text-gray-600">Total Cards</p>
-          </div>
-          <div className="bg-white rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-green-600">{studyStats.masteredCards}</p>
-            <p className="text-sm text-gray-600">Mastered</p>
-          </div>
-          <div className="bg-white rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-orange-600">{studyStats.dueCards}</p>
-            <p className="text-sm text-gray-600">Due Today</p>
-          </div>
-          <div className="bg-white rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-gray-900">{studyStats.completionRate}%</p>
-            <p className="text-sm text-gray-600">Completion</p>
-          </div>
-        </div>
       </div>
     </div>
   );

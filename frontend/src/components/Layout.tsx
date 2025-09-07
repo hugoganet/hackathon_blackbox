@@ -4,6 +4,7 @@ import Navbar from './Navbar';
 import MentorPage from './pages/MentorPage';
 import MetricsPage from './pages/MetricsPage';
 import QuizzesPage from './pages/QuizzesPage';
+import SettingsPage from './pages/SettingsPage';
 
 type ViewType = 'junior' | 'manager';
 
@@ -25,6 +26,8 @@ const Layout: React.FC = () => {
         return <MetricsPage viewType={viewType} />;
       case 'quizzes':
         return <QuizzesPage />;
+      case 'settings':
+        return <SettingsPage />;
       default:
         return <MentorPage />;
     }

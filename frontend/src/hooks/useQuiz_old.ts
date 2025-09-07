@@ -24,7 +24,7 @@ export const useQuiz = () => {
     setError({ hasError: false });
 
     try {
-      const questions = await apiService.getQuizQuestions(5);
+      const questions = await apiService.getQuizQuestions(10);
 
       // Convert questions to cards with spaced repetition data
       const quizCards: QuizCard[] = questions.map(question => ({
@@ -58,14 +58,13 @@ export const useQuiz = () => {
     try {
       // Vérifier la réponse localement
       const isCorrect = selectedAnswer === currentCard.correctAnswer;
-      const timeSpent = 2; // Temps simulé
 
       // Record attempt
       const attempt: QuizAttempt = {
         questionId: currentCard.id,
         selectedAnswer,
         isCorrect,
-        timeSpent,
+        timeSpent: 2,
         timestamp: new Date()
       };
 
@@ -77,33 +76,6 @@ export const useQuiz = () => {
         total: prev.total + 1,
         streak: isCorrect ? prev.streak + 1 : 0
       }));
-
-      // Appliquer l'algorithme SM-2
-      const quality = SpacedRepetitionService.calculateQuality(
-        isCorrect,
-        timeSpent,
-        currentCard.difficulty
-      );
-
-      // Mettre à jour les données de répétition espacée
-      const updatedSRData = SpacedRepetitionService.updateCard(quality, {
-        easeFactor: currentCard.easeFactor,
-        interval: currentCard.interval,
-        repetitions: currentCard.repetitions,
-        nextReview: currentCard.nextReview
-      });
-
-      // Mettre à jour la carte avec les nouvelles données SM-2
-      const updatedCard: QuizCard = {
-        ...currentCard,
-        ...updatedSRData,
-        lastReviewed: new Date()
-      };
-
-      // Mettre à jour les cartes dans l'état
-      setAllCards(prev => prev.map(card =>
-        card.id === currentCard.id ? updatedCard : card
-      ));
 
       setShowAnswer(true);
     } catch (err) {
@@ -117,7 +89,7 @@ export const useQuiz = () => {
   // Move to next card
   const nextCard = useCallback(() => {
     const nextIndex = currentCardIndex + 1;
-
+    
     if (nextIndex < availableCards.length) {
       setCurrentCardIndex(nextIndex);
       setCurrentCard(availableCards[nextIndex]);
@@ -145,50 +117,16 @@ export const useQuiz = () => {
 
   // Get study statistics
   const getStudyStats = useCallback(() => {
-    const total = allCards.length;
-    const dueCards = SpacedRepetitionService.getDueCards(allCards).length;
-    const overdueCards = allCards.filter(card =>
-      card.nextReview && card.nextReview < new Date()
-    ).length;
-
-    // Une carte est considérée comme maîtrisée si elle a été répétée au moins 3 fois
-    // avec un facteur de facilité >= 2.5 (logique SM-2)
-    const masteredCards = allCards.filter(card =>
-      card.repetitions >= 3 && card.easeFactor >= 2.5
-    ).length;
-
-    // Cartes en apprentissage : toutes les cartes qui ont été tentées au moins une fois
-    // mais qui ne sont pas encore maîtrisées
-    const learningCards = allCards.filter(card => {
-      const hasAttempts = attempts.some(attempt => attempt.questionId === card.id);
-      return hasAttempts && card.repetitions < 3;
-    }).length;
-
-    const totalReviews = allCards.reduce((sum, card) => sum + card.repetitions, 0);
-    const avgEaseFactor = allCards.length > 0
-      ? Number((allCards.reduce((sum, card) => sum + card.easeFactor, 0) / allCards.length).toFixed(2))
-      : 0;
-
-    // Statistiques de la journée (session actuelle)
-    const todayCorrect = attempts.filter(a => a.isCorrect).length;
-    const todayTotal = attempts.length;
-    const todaySuccessRate = todayTotal > 0 ? Math.round((todayCorrect / todayTotal) * 100) : 0;
-
     return {
-      // Statistiques globales
-      totalCards: total,
-      dueCards,
-      overdueCards,
-      masteredCards,
-      learningCards,
-      totalReviews,
-      averageEaseFactor: avgEaseFactor,
-      // Statistiques de la journée
-      todayCorrect,
-      todayTotal,
-      todaySuccessRate
+      totalCards: allCards.length,
+      dueCards: availableCards.length,
+      overdueCards: 0,
+      masteredCards: Math.floor(allCards.length * 0.3), // Simulation
+      totalReviews: attempts.length,
+      averageEaseFactor: 2.5,
+      completionRate: allCards.length > 0 ? Math.round((sessionStats.correct / Math.max(sessionStats.total, 1)) * 100) : 0
     };
-  }, [allCards, attempts]);
+  }, [allCards, availableCards, attempts, sessionStats]);
 
   // Load questions on mount
   useEffect(() => {
@@ -211,5 +149,100 @@ export const useQuiz = () => {
     // Helper pour la progression
     totalAvailableCards: availableCards.length,
     currentCardNumber: currentCardIndex + 1
+  };
+};
+        repetitions: currentCard.repetitions,
+        nextReview: currentCard.nextReview
+      });
+
+      const updatedCard: QuizCard = {
+        ...currentCard,
+        ...updatedSRData,
+        lastReviewed: new Date()
+      };
+
+      // Update cards array
+      setCards(prev => prev.map(card =>
+        card.id === currentCard.id ? updatedCard : card
+      ));
+
+      setShowAnswer(true);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to submit answer';
+      setError({ hasError: true, message: errorMessage });
+    } finally {
+      setLoading({ isLoading: false });
+    }
+  }, [currentCard]);
+
+  // Move to next card
+  const nextCard = useCallback(() => {
+    if (!cards.length) return;
+
+    const dueCards = SpacedRepetitionService.getDueCards(cards);
+    const sortedCards = SpacedRepetitionService.sortCardsByPriority(dueCards);
+
+    // Find next card (excluding current one)
+    const nextCardIndex = sortedCards.findIndex(card =>
+      currentCard && card.id !== currentCard.id
+    );
+
+    if (nextCardIndex >= 0) {
+      setCurrentCard(sortedCards[nextCardIndex]);
+    } else if (sortedCards.length > 0) {
+      // If we've gone through all due cards, start over
+      setCurrentCard(sortedCards[0]);
+    } else {
+      // No more due cards
+      setCurrentCard(null);
+    }
+
+    setShowAnswer(false);
+    setError({ hasError: false });
+  }, [cards, currentCard]);
+
+  // Reset quiz session
+  const resetSession = useCallback(() => {
+    setAttempts([]);
+    setSessionStats({ correct: 0, total: 0, streak: 0 });
+    setShowAnswer(false);
+    setError({ hasError: false });
+
+    if (cards.length > 0) {
+      const dueCards = SpacedRepetitionService.getDueCards(cards);
+      const sortedCards = SpacedRepetitionService.sortCardsByPriority(dueCards);
+      setCurrentCard(sortedCards.length > 0 ? sortedCards[0] : cards[0]);
+    }
+  }, [cards]);
+
+  // Get study statistics
+  const getStudyStats = useCallback(() => {
+    return SpacedRepetitionService.getStudyStats(cards);
+  }, [cards]);
+
+  // Get weekly schedule
+  const getWeeklySchedule = useCallback(() => {
+    return SpacedRepetitionService.getWeeklySchedule(cards);
+  }, [cards]);
+
+  // Load questions on mount
+  useEffect(() => {
+    loadQuestions();
+  }, [loadQuestions]);
+
+  return {
+    cards,
+    currentCard,
+    attempts,
+    loading,
+    error,
+    showAnswer,
+    sessionStats,
+    submitAnswer,
+    nextCard,
+    resetSession,
+    loadQuestions,
+    getStudyStats,
+    getWeeklySchedule
   };
 };

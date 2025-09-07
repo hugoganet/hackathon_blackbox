@@ -132,18 +132,20 @@ const MetricsPage: React.FC<MetricsPageProps> = ({ viewType }) => {
         </div>
 
         {/* Summary Statistics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Users className="w-6 h-6 text-blue-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Juniors</p>
-                <p className="text-2xl font-bold text-gray-900">{summaryStats.totalJuniors}</p>
+        <div className={`grid gap-6 mb-8 ${viewType === 'junior' ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4'}`}>
+          {viewType === 'manager' && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+              <div className="flex items-center">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <Users className="w-6 h-6 text-blue-600" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Total Juniors</p>
+                  <p className="text-2xl font-bold text-gray-900">{summaryStats.totalJuniors}</p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <div className="flex items-center">
@@ -151,7 +153,9 @@ const MetricsPage: React.FC<MetricsPageProps> = ({ viewType }) => {
                 <Target className="w-6 h-6 text-green-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Avg Skills/Junior</p>
+                <p className="text-sm font-medium text-gray-600">
+                  {viewType === 'junior' ? 'Mes Skills' : 'Avg Skills/Junior'}
+                </p>
                 <p className="text-2xl font-bold text-gray-900">{summaryStats.averageSkills}</p>
               </div>
             </div>
@@ -163,7 +167,9 @@ const MetricsPage: React.FC<MetricsPageProps> = ({ viewType }) => {
                 <TrendingUp className="w-6 h-6 text-purple-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Sessions</p>
+                <p className="text-sm font-medium text-gray-600">
+                  {viewType === 'junior' ? 'Mes Sessions' : 'Total Sessions'}
+                </p>
                 <p className="text-2xl font-bold text-gray-900">{summaryStats.totalSessions}</p>
               </div>
             </div>
@@ -175,7 +181,9 @@ const MetricsPage: React.FC<MetricsPageProps> = ({ viewType }) => {
                 <Clock className="w-6 h-6 text-orange-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Avg Session Time</p>
+                <p className="text-sm font-medium text-gray-600">
+                  {viewType === 'junior' ? 'Temps Moyen/Session' : 'Avg Session Time'}
+                </p>
                 <p className="text-2xl font-bold text-gray-900">{summaryStats.averageSessionTime}m</p>
               </div>
             </div>

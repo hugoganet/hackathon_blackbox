@@ -79,7 +79,7 @@ export interface SpacedRepetitionData {
 }
 
 // UI Types
-export type TabType = 'mentor' | 'metrics' | 'quizzes';
+export type TabType = 'mentor' | 'metrics' | 'quizzes' | 'settings';
 
 export interface LoadingState {
   isLoading: boolean;

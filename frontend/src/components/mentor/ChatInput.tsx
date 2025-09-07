@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Code, Paperclip } from 'lucide-react';
+import { Send } from 'lucide-react';
 
 interface ChatInputProps {
-  onSendMessage: (message: string, includeCode?: boolean) => void;
+  onSendMessage: (message: string) => void;
   disabled?: boolean;
   placeholder?: string;
 }
@@ -13,15 +13,13 @@ const ChatInput: React.FC<ChatInputProps> = ({
   placeholder = "Type your message..."
 }) => {
   const [message, setMessage] = useState('');
-  const [includeCode, setIncludeCode] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (message.trim() && !disabled) {
-      onSendMessage(message.trim(), includeCode);
+      onSendMessage(message.trim());
       setMessage('');
-      setIncludeCode(false);
     }
   };
 
@@ -42,20 +40,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
-      {/* Options */}
-      <div className="flex items-center space-x-3">
-        <label className="flex items-center space-x-2 text-sm text-gray-600">
-          <input
-            type="checkbox"
-            checked={includeCode}
-            onChange={(e) => setIncludeCode(e.target.checked)}
-            className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-          />
-          <Code className="w-4 h-4" />
-          <span>Include current code</span>
-        </label>
-      </div>
-
       {/* Input Area */}
       <div className="relative">
         <textarea
