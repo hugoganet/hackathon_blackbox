@@ -112,21 +112,24 @@ def populate_skills(db: Session, domains):
     """Populate skills table"""
     print("🎯 Populating skills...")
     
+    # Get domains with their IDs from database
+    domain_list = db.query(RefDomain).order_by(RefDomain.display_order).all()
+    
     skills = [
-        Skill(name='Array Manipulation', description='Working with arrays and collections', domain_id=domains[0].id),
-        Skill(name='Big O Notation', description='Understanding algorithm complexity', domain_id=domains[0].id),
-        Skill(name='Variable Declaration', description='Proper variable naming and scoping', domain_id=domains[1].id),
-        Skill(name='Function Syntax', description='Function declaration and expression syntax', domain_id=domains[1].id),
-        Skill(name='Conditional Logic', description='If/else statements and boolean logic', domain_id=domains[2].id),
-        Skill(name='Loop Structures', description='For, while, and iterator patterns', domain_id=domains[2].id),
-        Skill(name='MVC Pattern', description='Model-View-Controller architecture', domain_id=domains[3].id),
-        Skill(name='Component Design', description='Reusable component architecture', domain_id=domains[3].id),
-        Skill(name='Console Debugging', description='Using browser and IDE debugging tools', domain_id=domains[4].id),
-        Skill(name='Error Handling', description='Try/catch and error management', domain_id=domains[4].id),
-        Skill(name='React Hooks', description='useState, useEffect, and custom hooks', domain_id=domains[5].id),
-        Skill(name='React Router', description='Client-side routing in React applications', domain_id=domains[5].id),
-        Skill(name='SQL Queries', description='SELECT, JOIN, and data retrieval', domain_id=domains[6].id),
-        Skill(name='Database Design', description='Normalization and schema design', domain_id=domains[6].id),
+        Skill(name='Array Manipulation', description='Working with arrays and collections', id_domain=domain_list[0].id_domain),
+        Skill(name='Big O Notation', description='Understanding algorithm complexity', id_domain=domain_list[0].id_domain),
+        Skill(name='Variable Declaration', description='Proper variable naming and scoping', id_domain=domain_list[1].id_domain),
+        Skill(name='Function Syntax', description='Function declaration and expression syntax', id_domain=domain_list[1].id_domain),
+        Skill(name='Conditional Logic', description='If/else statements and boolean logic', id_domain=domain_list[2].id_domain),
+        Skill(name='Loop Structures', description='For, while, and iterator patterns', id_domain=domain_list[2].id_domain),
+        Skill(name='MVC Pattern', description='Model-View-Controller architecture', id_domain=domain_list[3].id_domain),
+        Skill(name='Component Design', description='Reusable component architecture', id_domain=domain_list[3].id_domain),
+        Skill(name='Console Debugging', description='Using browser and IDE debugging tools', id_domain=domain_list[4].id_domain),
+        Skill(name='Error Handling', description='Try/catch and error management', id_domain=domain_list[4].id_domain),
+        Skill(name='React Hooks', description='useState, useEffect, and custom hooks', id_domain=domain_list[5].id_domain),
+        Skill(name='React Router', description='Client-side routing in React applications', id_domain=domain_list[5].id_domain),
+        Skill(name='SQL Queries', description='SELECT, JOIN, and data retrieval', id_domain=domain_list[6].id_domain),
+        Skill(name='Database Design', description='Normalization and schema design', id_domain=domain_list[6].id_domain),
     ]
     db.add_all(skills)
     db.commit()
@@ -171,6 +174,11 @@ def create_sessions_and_interactions(db: Session, users, domains, languages, int
     """Create realistic conversation sessions with interactions"""
     print("💬 Creating sessions and interactions...")
     
+    # Get reference data with IDs from database
+    domain_list = db.query(RefDomain).order_by(RefDomain.display_order).all()
+    language_list = db.query(RefLanguage).all()
+    intent_list = db.query(RefIntent).all()
+    
     # Alex's session (Junior Frontend)
     alex_session1 = ChatSession(
         id=uuid.UUID('660e8400-e29b-41d4-a716-446655440001'),
@@ -191,9 +199,9 @@ def create_sessions_and_interactions(db: Session, users, domains, languages, int
         mentor_response='Great question! Before I help you fix it, let me ask - can you show me the exact line where you\'re declaring your useState? What are you trying to store in that state variable?',
         response_time_ms=1250,
         created_at=datetime(2024, 1, 15, 10, 5, 0),
-        domain_id=domains[5].id,  # FRAMEWORKS
-        language_id=languages[5].id,  # React
-        intent_id=intents[0].id  # debugging
+        id_domain=domain_list[5].id_domain,  # FRAMEWORKS
+        id_language=language_list[5].id_language,  # React
+        id_intent=intent_list[0].id_intent  # debugging
     )
     db.add(alex_interaction1)
     
@@ -217,9 +225,9 @@ def create_sessions_and_interactions(db: Session, users, domains, languages, int
         mentor_response='For a blog API, you\'ll want to follow RESTful conventions. Consider these endpoints: GET /posts, POST /posts, GET /posts/:id, GET /posts/:id/comments, POST /posts/:id/comments.',
         response_time_ms=1450,
         created_at=datetime(2024, 1, 10, 16, 3, 0),
-        domain_id=domains[3].id,  # ARCHITECTURE
-        language_id=languages[2].id,  # Python
-        intent_id=intents[3].id  # architecture
+        id_domain=domain_list[3].id_domain,  # ARCHITECTURE
+        id_language=language_list[2].id_language,  # Python
+        id_intent=intent_list[3].id_intent  # architecture
     )
     db.add(maria_interaction1)
     
@@ -247,36 +255,36 @@ def create_skill_history(db: Session, users, skills):
     skill_history = [
         # Alex's progression (Junior - React focus)
         SkillHistory(
-            user_id=users[0].id,
-            skill_id=skills[10].id,  # React Hooks
+            id_user=users[0].id,
+            id_skill=skills[10].id_skill,  # React Hooks
             mastery_level=1,
             snapshot_date=date(2024, 1, 15)
         ),
         SkillHistory(
-            user_id=users[0].id,
-            skill_id=skills[10].id,  # React Hooks
+            id_user=users[0].id,
+            id_skill=skills[10].id_skill,  # React Hooks
             mastery_level=2,
             snapshot_date=date(2024, 1, 20)
         ),
         
         # Maria's progression (Full-Stack)
         SkillHistory(
-            user_id=users[1].id,
-            skill_id=skills[6].id,  # MVC Pattern
+            id_user=users[1].id,
+            id_skill=skills[6].id_skill,  # MVC Pattern
             mastery_level=3,
             snapshot_date=date(2024, 1, 10)
         ),
         SkillHistory(
-            user_id=users[1].id,
-            skill_id=skills[6].id,  # MVC Pattern
+            id_user=users[1].id,
+            id_skill=skills[6].id_skill,  # MVC Pattern
             mastery_level=4,
             snapshot_date=date(2024, 1, 25)
         ),
         
         # David's progression (Senior - Expert level)
         SkillHistory(
-            user_id=users[2].id,
-            skill_id=skills[12].id,  # SQL Queries
+            id_user=users[2].id,
+            id_skill=skills[12].id_skill,  # SQL Queries
             mastery_level=5,
             snapshot_date=date(2024, 1, 22)
         ),
@@ -300,7 +308,7 @@ def create_flashcards_and_reviews(db: Session, users, interactions, skills):
         next_review_date=date(2024, 2, 6),
         review_count=0,
         interaction_id=interactions[0].id,
-        skill_id=skills[10].id  # React Hooks
+        skill_id=skills[10].id_skill  # React Hooks
     )
     db.add(flashcard1)
     
