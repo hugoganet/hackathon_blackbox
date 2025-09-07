@@ -17,6 +17,7 @@ requests>=2.31.0
 # Utilities
 python-dotenv>=1.0.0
 pydantic>=2.5.0
+pydantic-ai>=0.0.14
 
 # PydanticAI for advanced agent functionality
 pydantic-ai>=0.0.14

@@ -1,239 +1,229 @@
 """
-SQLAlchemy Models for Dev Mentor AI
-Complete schema with all relationships
+Database models and configuration for Dev Mentor AI
+Uses PostgreSQL with SQLAlchemy for Railway deployment
 """
 
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Date, UniqueConstraint, CheckConstraint
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Date, UniqueConstraint
+from sqlalchemy.orm import sessionmaker, Session, relationship, declarative_base
 from sqlalchemy.dialects.postgresql import UUID
+from datetime import datetime, date
 import uuid
-from datetime import datetime
+import os
 
+# Database configuration - PostgreSQL only
+# Railway automatically provides DATABASE_URL environment variable
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost:5432/dev_mentor")
+
+# Ensure we're using PostgreSQL
+if not DATABASE_URL.startswith(("postgresql://", "postgres://")):
+    raise ValueError("DATABASE_URL must be a PostgreSQL connection string")
+
+# SQLAlchemy setup - PostgreSQL only
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,  # Verify connections before use
+    pool_recycle=300,    # Recycle connections every 5 minutes
+)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# ========================================
-# REFERENCE TABLES
-# ========================================
-
-class RefDomain(Base):
-    """Learning domains reference table"""
-    __tablename__ = "ref_domains"
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(50), unique=True, nullable=False)
-    description = Column(Text)
-    display_order = Column(Integer, default=0)
-    is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    
-    # Relationships
-    skills = relationship("Skill", back_populates="domain")
-    interactions = relationship("Interaction", back_populates="domain")
-
-
-class RefLanguage(Base):
-    """Programming languages reference table"""
-    __tablename__ = "ref_languages"
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(50), unique=True, nullable=False)
-    category = Column(String(30))
-    is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    
-    # Relationships
-    interactions = relationship("Interaction", back_populates="language")
-
-
-class RefIntent(Base):
-    """Intent types reference table"""
-    __tablename__ = "ref_intents"
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(50), unique=True, nullable=False)
-    description = Column(Text)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    
-    # Relationships
-    interactions = relationship("Interaction", back_populates="intent")
-
-
-# ========================================
-# CORE TABLES
-# ========================================
+# PostgreSQL UUID type
+UUIDType = UUID(as_uuid=True)
 
 class User(Base):
-    """Platform users (developers and managers)"""
+    """
+    User model - represents junior developers using the platform
+    """
     __tablename__ = "users"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4, name='id_user')
     username = Column(String(50), unique=True, nullable=False)
-    email = Column(String(255), unique=True)
-    password_hash = Column(String(255))
-    role = Column(String(20), nullable=False, default='developer')
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    is_active = Column(Boolean, default=True, nullable=False)
-    
-    # Constraints
-    __table_args__ = (
-        CheckConstraint(role.in_(['developer', 'manager']), name='users_role_check'),
-        CheckConstraint('length(username) >= 3', name='users_username_length'),
-    )
+    email = Column(String(255), unique=True, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
     
     # Relationships
-    sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
-    skill_history = relationship("SkillHistory", back_populates="user", cascade="all, delete-orphan")
-    review_sessions = relationship("ReviewSession", back_populates="user", cascade="all, delete-orphan")
+    conversations = relationship("Conversation", back_populates="user")
+    skill_history = relationship("SkillHistory", back_populates="user")
 
-
-class Session(Base):
-    """Conversation sessions between users and AI agents"""
-    __tablename__ = "sessions"
+class Conversation(Base):
+    """
+    Conversation model - represents a chat session between user and mentor
+    """
+    __tablename__ = "conversations"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    title = Column(String(255))
-    agent_type = Column(String(20), nullable=False, default='normal')
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    ended_at = Column(DateTime(timezone=True))
-    is_active = Column(Boolean, default=True, nullable=False)
-    
-    # Constraints
-    __table_args__ = (
-        CheckConstraint(agent_type.in_(['normal', 'strict', 'curator', 'flashcard']), name='sessions_agent_type_check'),
-        CheckConstraint('ended_at IS NULL OR ended_at >= created_at', name='sessions_end_after_start'),
-    )
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
+    session_id = Column(String(255), nullable=False, index=True)
+    agent_type = Column(String(20), nullable=False)  # "normal" or "strict"
+    title = Column(String(255), nullable=True)  # Optional conversation title
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
     
     # Relationships
-    user = relationship("User", back_populates="sessions")
-    interactions = relationship("Interaction", back_populates="session", cascade="all, delete-orphan")
+    user = relationship("User", back_populates="conversations")
+    interactions = relationship("Interaction", back_populates="conversation")
 
+class Interaction(Base):
+    """
+    Interaction model - individual message exchanges within a conversation
+    This data will be used to create embeddings for the vector store
+    """
+    __tablename__ = "interactions"
+    
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+    conversation_id = Column(UUIDType, ForeignKey("conversations.id"), nullable=False)
+    
+    # Message content
+    user_message = Column(Text, nullable=False)
+    mentor_response = Column(Text, nullable=False)
+    
+    # Context for vector store
+    user_intent = Column(String(100), nullable=True)  # Classified intent (e.g., "debugging", "concept_explanation")
+    programming_language = Column(String(50), nullable=True)  # e.g., "javascript", "python"
+    difficulty_level = Column(String(20), nullable=True)  # e.g., "beginner", "intermediate"
+    
+    # Metadata
+    response_time_ms = Column(Integer, nullable=True)  # API response time for monitoring
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Vector store integration
+    embedding_created = Column(Boolean, default=False)  # Track if embedding was created
+    
+    # Relationship
+    conversation = relationship("Conversation", back_populates="interactions")
+
+class MemoryEntry(Base):
+    """
+    Memory Entry model - tracks patterns and insights about user learning
+    Used alongside vector store for personalized mentoring
+    """
+    __tablename__ = "memory_entries"
+    
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
+    
+    # Learning insights
+    concept = Column(String(100), nullable=False)  # e.g., "react_hooks", "async_await"
+    mastery_level = Column(Integer, default=1)  # 1-5 scale of understanding
+    common_mistakes = Column(Text, nullable=True)  # JSON array of common errors
+    learning_style = Column(String(50), nullable=True)  # e.g., "visual", "hands_on"
+    
+    # Tracking
+    first_encountered = Column(DateTime, default=datetime.utcnow)
+    last_practiced = Column(DateTime, default=datetime.utcnow)
+    practice_count = Column(Integer, default=1)
+    
+    # Vector store reference
+    vector_id = Column(String(255), nullable=True)  # Reference to Chroma embedding
+
+class RefDomain(Base):
+    """
+    Reference table for learning domains
+    """
+    __tablename__ = "ref_domains"
+    
+    id_domain = Column(Integer, primary_key=True)
+    name = Column(String(50), nullable=False, unique=True)
+    description = Column(Text)
+    display_order = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationship to skills
+    skills = relationship("Skill", back_populates="domain")
 
 class Skill(Base):
-    """Learning competencies to be mastered"""
+    """
+    Skills table - represents learning competencies to be mastered
+    """
     __tablename__ = "skills"
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(100), unique=True, nullable=False)
+    id_skill = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False, unique=True)
     description = Column(Text)
-    domain_id = Column(Integer, ForeignKey("ref_domains.id"), nullable=False)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    
-    # Constraints
-    __table_args__ = (
-        CheckConstraint('length(name) >= 2', name='skills_name_length'),
-    )
+    id_domain = Column(Integer, ForeignKey("ref_domains.id_domain"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
     domain = relationship("RefDomain", back_populates="skills")
     skill_history = relationship("SkillHistory", back_populates="skill")
-    flashcards = relationship("Flashcard", back_populates="skill")
-
-
-class Interaction(Base):
-    """Individual message exchanges within sessions"""
-    __tablename__ = "interactions"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False)
-    user_message = Column(Text, nullable=False)
-    mentor_response = Column(Text, nullable=False)
-    vector_id = Column(String(255))  # Reference to ChromaDB
-    response_time_ms = Column(Integer)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    
-    # Foreign keys to reference tables
-    domain_id = Column(Integer, ForeignKey("ref_domains.id"))
-    language_id = Column(Integer, ForeignKey("ref_languages.id"))
-    intent_id = Column(Integer, ForeignKey("ref_intents.id"))
-    
-    # Constraints
-    __table_args__ = (
-        CheckConstraint('length(user_message) > 0', name='interactions_message_length'),
-        CheckConstraint('length(mentor_response) > 0', name='interactions_response_length'),
-        CheckConstraint('response_time_ms IS NULL OR response_time_ms >= 0', name='interactions_response_time_positive'),
-    )
-    
-    # Relationships
-    session = relationship("Session", back_populates="interactions")
-    domain = relationship("RefDomain", back_populates="interactions")
-    language = relationship("RefLanguage", back_populates="interactions")
-    intent = relationship("RefIntent", back_populates="interactions")
-    flashcards = relationship("Flashcard", back_populates="interaction")
-
 
 class SkillHistory(Base):
-    """Daily snapshots of user skill progression"""
+    """
+    Skill History table - tracks daily snapshots of user skill progression
+    Used by spaced repetition algorithm to optimize learning
+    """
     __tablename__ = "skill_history"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    skill_id = Column(Integer, ForeignKey("skills.id", ondelete="CASCADE"), nullable=False)
+    id_history = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+    id_user = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
+    id_skill = Column(Integer, ForeignKey("skills.id_skill"), nullable=False)
     mastery_level = Column(Integer, nullable=False, default=1)
-    snapshot_date = Column(Date, nullable=False, default=datetime.today)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    
-    # Constraints
-    __table_args__ = (
-        CheckConstraint('mastery_level BETWEEN 1 AND 5', name='skill_history_mastery_range'),
-        UniqueConstraint('user_id', 'skill_id', 'snapshot_date', name='skill_history_unique_daily'),
-    )
+    snapshot_date = Column(Date, nullable=False, default=date.today)
+    created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
     user = relationship("User", back_populates="skill_history")
     skill = relationship("Skill", back_populates="skill_history")
-
+    
+    # Table constraints
+    __table_args__ = (
+        UniqueConstraint('id_user', 'id_skill', 'snapshot_date', name='skill_history_unique_daily'),
+    )
 
 class Flashcard(Base):
-    """Spaced repetition learning cards"""
+    """
+    Flashcard model - spaced repetition learning cards generated from interactions
+    """
     __tablename__ = "flashcards"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4, name='id_flashcard')
     question = Column(Text, nullable=False)
     answer = Column(Text, nullable=False)
-    difficulty = Column(Integer, nullable=False, default=1)
+    difficulty = Column(Integer, nullable=False, default=1)  # 1-5 scale
     card_type = Column(String(50), nullable=False, default='concept')
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    next_review_date = Column(Date, nullable=False, default=datetime.today)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    next_review_date = Column(Date, nullable=False, default=date.today)
     review_count = Column(Integer, nullable=False, default=0)
     
     # Foreign keys
-    interaction_id = Column(UUID(as_uuid=True), ForeignKey("interactions.id", ondelete="SET NULL"))
-    skill_id = Column(Integer, ForeignKey("skills.id"))
-    
-    # Constraints
-    __table_args__ = (
-        CheckConstraint('difficulty BETWEEN 1 AND 5', name='flashcards_difficulty_range'),
-        CheckConstraint(card_type.in_(['concept', 'code_completion', 'error_identification', 'application']), 
-                       name='flashcards_card_type_check'),
-        CheckConstraint('review_count >= 0', name='flashcards_review_count_positive'),
-    )
+    interaction_id = Column(UUIDType, ForeignKey("interactions.id"), nullable=True)
+    skill_id = Column(Integer, ForeignKey("skills.id_skill"), nullable=True)
     
     # Relationships
-    interaction = relationship("Interaction", back_populates="flashcards")
-    skill = relationship("Skill", back_populates="flashcards")
-    review_sessions = relationship("ReviewSession", back_populates="flashcard", cascade="all, delete-orphan")
-
+    interaction = relationship("Interaction", backref="flashcards")
+    skill = relationship("Skill", backref="flashcards")
 
 class ReviewSession(Base):
-    """History of flashcard review performance"""
+    """
+    Review Session model - tracks flashcard review performance for spaced repetition
+    """
     __tablename__ = "review_sessions"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    flashcard_id = Column(UUID(as_uuid=True), ForeignKey("flashcards.id", ondelete="CASCADE"), nullable=False)
-    success_score = Column(Integer, nullable=False)
-    response_time = Column(Integer)  # in seconds
-    review_date = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    
-    # Constraints
-    __table_args__ = (
-        CheckConstraint('success_score BETWEEN 0 AND 5', name='review_sessions_score_range'),
-        CheckConstraint('response_time IS NULL OR response_time > 0', name='review_sessions_response_time_positive'),
-    )
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4, name='id_review')
+    user_id = Column(UUIDType, ForeignKey("users.id_user"), nullable=False)
+    flashcard_id = Column(UUIDType, ForeignKey("flashcards.id_flashcard"), nullable=False)
+    success_score = Column(Integer, nullable=False)  # 0-5 scale
+    response_time = Column(Integer, nullable=True)  # seconds
+    review_date = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
-    user = relationship("User", back_populates="review_sessions")
-    flashcard = relationship("Flashcard", back_populates="review_sessions")
+    user = relationship("User", backref="review_sessions")
+    flashcard = relationship("Flashcard", backref="review_sessions")
+
+def create_tables():
+    """
+    Create all database tables
+    This will be called during startup or migration
+    """
+    Base.metadata.create_all(bind=engine)
+    print("✅ Database tables created successfully")
+
+# Development helper
+if __name__ == "__main__":
+    print("Creating database tables...")
+    create_tables()
+    print("Done!")
